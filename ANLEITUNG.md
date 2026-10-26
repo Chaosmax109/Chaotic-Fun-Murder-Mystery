@@ -68,26 +68,34 @@ Tipp: OPs im **Kreativmodus** sind vom Block-/Inventarschutz ausgenommen – zum
 - Tote werden Zuschauer; ihr Chat ist nur für andere Tote sichtbar.
 - Nach 10 Sekunden geht es zurück in die Lobby, die nächste Runde startet automatisch.
 
-## 6. Einstellungen (`plugins/MurderMystery/config.yml`)
+## 6. Einstellungen
 
-Nach Änderungen `/mm reload` ausführen. Jede Einstellung ist in der Datei kommentiert. Die wichtigsten:
+Im Ordner `plugins/MurderMystery/` liegen drei Dateien:
 
-**Rollen** (`roles.murderer`, `roles.detective`, `roles.innocent`):
+| Datei | Inhalt |
+|---|---|
+| `config.yml` | Allgemeines: Auto-Join, Spielerzahlen, Zeiten, Lobby, Arena-Punkte |
+| `roles.yml` | Alles zu den Rollen Mörder, Detektiv, Unschuldig |
+| `gold.yml` | Alles zum Gold |
+
+Nach Änderungen `/mm reload` ausführen, das lädt alle drei neu. Jede Einstellung ist in den Dateien kommentiert. Die wichtigsten:
+
+**Rollen** (`roles.yml`, Abschnitte `murderer`, `detective`, `innocent`):
 - `amount` und `extra-per-players`: wie viele Mörder bzw. Detektive es gibt. Beispiel: `amount: 1`, `extra-per-players: 8` bedeutet ab 8 Spielern 2 Mörder, ab 16 Spielern 3.
   Bei mehreren Mördern kennen sie sich gegenseitig und können sich nicht töten.
 - `name`, `color`, `title`, `subtitle`, `message`: Anzeigename, Farbe und Texte beim Rundenstart.
 - `weapon.material` / `weapon.name`: Waffe der Rolle (z. B. `DIAMOND_SWORD` für den Mörder, `BOW` oder `CROSSBOW` für den Detektiv).
 - Mörder: `knife-throw`, `knife-cooldown`, `knife-range`. Detektiv: `arrow-cooldown`.
 - `can-collect-gold`: ob die Rolle Gold sammeln darf.
-- `roles.team-kill-kills-shooter`: ob ein Unschuldiger stirbt, wenn er einen anderen Unschuldigen erschießt.
+- `team-kill-kills-shooter`: ob ein Unschuldiger stirbt, wenn er einen anderen Unschuldigen erschießt.
 
-**Gold** (`gold`):
+**Gold** (`gold.yml`):
 - `enabled`, `material` (z. B. `GOLD_INGOT`, `GOLD_NUGGET`, `EMERALD`)
 - `interval`: alle wie viele Sekunden Gold erscheint. `spawns-per-interval`: an wie vielen Punkten gleichzeitig.
 - `max-on-map`: höchstens so viele Gold-Items gleichzeitig (0 = so viele wie Gold-Spawns)
 - `amount-per-pickup`, `for-bow`, `arrows-per-bow`, `bow-name`
 
-Configs aus Version 2.0 werden beim ersten Start automatisch auf das neue Format umgestellt. Lobby und Spawns bleiben dabei erhalten.
+Ältere Configs werden beim ersten Start automatisch umgestellt: Rollen- und Gold-Einstellungen aus der `config.yml` wandern samt deinen Werten in `roles.yml` und `gold.yml`. Lobby und Spawns bleiben in der `config.yml` erhalten.
 
 ## 7. Statistiken
 

@@ -1,0 +1,22 @@
+# ===============================
+#   Murder Mystery – Gold
+# ===============================
+# Nach Änderungen: /mm reload
+# Die Gold-Spawnpunkte selbst werden per /mm addgold gesetzt.
+
+enabled: true
+# Item, das als Gold auf der Map erscheint (z. B. GOLD_INGOT, GOLD_NUGGET, EMERALD)
+material: GOLD_INGOT
+# Alle wie viele Sekunden Gold erscheint
+interval: 8
+# An wie vielen Gold-Spawns pro Intervall gleichzeitig Gold erscheint
+spawns-per-interval: 1
+# Höchstens so viele Gold-Items gleichzeitig auf der Map (0 = so viele wie Gold-Spawns)
+max-on-map: 0
+# Wie viel Gold ein aufgesammeltes Item zählt
+amount-per-pickup: 1
+# Wie viel Gold man für einen Bogen braucht
+for-bow: 10
+# Pfeile, die man pro eingelöstem Gold-Paket bekommt
+arrows-per-bow: 1
+bow-name: "&eBogen"

@@ -73,7 +73,12 @@ public class Settings {
     public final int arrowsPerBow;
     public final String goldBowName;
 
-    public Settings(FileConfiguration c, Logger log) {
+    /**
+     * @param c     config.yml (allgemeine Einstellungen)
+     * @param roles roles.yml
+     * @param gold  gold.yml
+     */
+    public Settings(FileConfiguration c, FileConfiguration roles, FileConfiguration gold, Logger log) {
         autoJoin = c.getBoolean("auto-join", true);
         minPlayers = Math.max(2, c.getInt("min-players", 4));
         maxPlayers = Math.max(minPlayers, c.getInt("max-players", 16));
@@ -83,43 +88,61 @@ public class Settings {
         serverName = Util.color(c.getString("server-name", "&edein-server.de"));
         lobbyMaxDistance = Math.max(0, c.getInt("lobby.max-distance", 40));
 
-        teamKillKillsShooter = c.getBoolean("roles.team-kill-kills-shooter", true);
-        murderer = new RoleSettings(section(c, "roles.murderer"), Material.IRON_SWORD, log);
-        detective = new RoleSettings(section(c, "roles.detective"), Material.BOW, log);
-        innocent = new RoleSettings(section(c, "roles.innocent"), Material.AIR, log);
-        knifeThrow = c.getBoolean("roles.murderer.knife-throw", true);
-        knifeCooldown = Math.max(0, c.getInt("roles.murderer.knife-cooldown", 5));
-        knifeRange = Math.max(1, c.getInt("roles.murderer.knife-range", 40));
-        arrowCooldown = Math.max(0, c.getInt("roles.detective.arrow-cooldown", 5));
+        teamKillKillsShooter = roles.getBoolean("team-kill-kills-shooter", true);
+        murderer = new RoleSettings(section(roles, "murderer"), Material.IRON_SWORD, log);
+        detective = new RoleSettings(section(roles, "detective"), Material.BOW, log);
+        innocent = new RoleSettings(section(roles, "innocent"), Material.AIR, log);
+        knifeThrow = roles.getBoolean("murderer.knife-throw", true);
+        knifeCooldown = Math.max(0, roles.getInt("murderer.knife-cooldown", 5));
+        knifeRange = Math.max(1, roles.getInt("murderer.knife-range", 40));
+        arrowCooldown = Math.max(0, roles.getInt("detective.arrow-cooldown", 5));
 
-        goldEnabled = c.getBoolean("gold.enabled", true);
-        goldMaterial = material(c.getString("gold.material"), Material.GOLD_INGOT, log, "gold.material");
-        goldInterval = Math.max(1, c.getInt("gold.interval", 8));
-        goldSpawnsPerInterval = Math.max(1, c.getInt("gold.spawns-per-interval", 1));
-        goldMaxOnMap = Math.max(0, c.getInt("gold.max-on-map", 0));
-        goldPerPickup = Math.max(1, c.getInt("gold.amount-per-pickup", 1));
-        goldForBow = Math.max(1, c.getInt("gold.for-bow", 10));
-        arrowsPerBow = Math.max(1, c.getInt("gold.arrows-per-bow", 1));
-        goldBowName = Util.color(c.getString("gold.bow-name", "&eBogen"));
+        goldEnabled = gold.getBoolean("enabled", true);
+        goldMaterial = material(gold.getString("material"), Material.GOLD_INGOT, log, "gold.yml: material");
+        goldInterval = Math.max(1, gold.getInt("interval", 8));
+        goldSpawnsPerInterval = Math.max(1, gold.getInt("spawns-per-interval", 1));
+        goldMaxOnMap = Math.max(0, gold.getInt("max-on-map", 0));
+        goldPerPickup = Math.max(1, gold.getInt("amount-per-pickup", 1));
+        goldForBow = Math.max(1, gold.getInt("for-bow", 10));
+        arrowsPerBow = Math.max(1, gold.getInt("arrows-per-bow", 1));
+        goldBowName = Util.color(gold.getString("bow-name", "&eBogen"));
     }
 
-    /** Ändert alte Schlüssel aus Version 2.0 in die neue Struktur um. */
-    public static boolean migrate(FileConfiguration c) {
+    /**
+     * Verschiebt Rollen- und Gold-Einstellungen aus älteren config.yml-Versionen
+     * (2.0: einzelne Schlüssel, 2.1-Vorabversion: Abschnitte roles/gold) in roles.yml und gold.yml.
+     */
+    public static boolean migrate(FileConfiguration c, FileConfiguration roles, FileConfiguration gold) {
+        boolean changed = moveSection(c, "roles", roles) | moveSection(c, "gold", gold);
         String[][] moves = {
-                {"gold-interval", "gold.interval"},
-                {"gold-for-bow", "gold.for-bow"},
-                {"knife-cooldown", "roles.murderer.knife-cooldown"},
-                {"arrow-cooldown", "roles.detective.arrow-cooldown"},
+                {"gold-interval", "interval"},
+                {"gold-for-bow", "for-bow"},
         };
-        boolean changed = false;
         for (String[] m : moves) {
-            if (c.isSet(m[0])) {
-                c.set(m[1], c.get(m[0]));
-                c.set(m[0], null);
-                changed = true;
+            changed |= moveKey(c, m[0], gold, m[1]);
+        }
+        changed |= moveKey(c, "knife-cooldown", roles, "murderer.knife-cooldown");
+        changed |= moveKey(c, "arrow-cooldown", roles, "detective.arrow-cooldown");
+        return changed;
+    }
+
+    private static boolean moveSection(FileConfiguration from, String path, FileConfiguration to) {
+        ConfigurationSection s = from.getConfigurationSection(path);
+        if (s == null || !from.isSet(path)) return false;
+        for (var e : s.getValues(true).entrySet()) {
+            if (!(e.getValue() instanceof ConfigurationSection)) {
+                to.set(e.getKey(), e.getValue());
             }
         }
-        return changed;
+        from.set(path, null);
+        return true;
+    }
+
+    private static boolean moveKey(FileConfiguration from, String key, FileConfiguration to, String target) {
+        if (!from.isSet(key)) return false;
+        to.set(target, from.get(key));
+        from.set(key, null);
+        return true;
     }
 
     private static ConfigurationSection section(FileConfiguration c, String path) {

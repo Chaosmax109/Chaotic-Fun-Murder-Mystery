@@ -5,9 +5,15 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class MurderMysteryPlugin extends JavaPlugin {
@@ -53,13 +59,40 @@ public class MurderMysteryPlugin extends JavaPlugin {
 
     private void loadSettings() {
         reloadConfig();
-        if (Settings.migrate(getConfig())) {
-            getLogger().info("config.yml wurde auf das neue Format umgestellt.");
+        File rolesFile = new File(getDataFolder(), "roles.yml");
+        File goldFile = new File(getDataFolder(), "gold.yml");
+        if (!rolesFile.exists()) saveResource("roles.yml", false);
+        if (!goldFile.exists()) saveResource("gold.yml", false);
+        YamlConfiguration roles = loadWithDefaults(rolesFile);
+        YamlConfiguration gold = loadWithDefaults(goldFile);
+
+        if (Settings.migrate(getConfig(), roles, gold)) {
+            getLogger().info("Rollen- und Gold-Einstellungen wurden aus der config.yml nach roles.yml und gold.yml verschoben.");
         }
-        // Neue Einstellungen aus Updates in die vorhandene config.yml übernehmen
+        // Neue Einstellungen aus Updates in die vorhandenen Dateien übernehmen
         getConfig().options().copyDefaults(true);
         saveConfig();
-        settings = new Settings(getConfig(), getLogger());
+        save(roles, rolesFile);
+        save(gold, goldFile);
+        settings = new Settings(getConfig(), roles, gold, getLogger());
+    }
+
+    private YamlConfiguration loadWithDefaults(File file) {
+        YamlConfiguration yml = YamlConfiguration.loadConfiguration(file);
+        InputStream in = getResource(file.getName());
+        if (in != null) {
+            yml.setDefaults(YamlConfiguration.loadConfiguration(new InputStreamReader(in, StandardCharsets.UTF_8)));
+            yml.options().copyDefaults(true);
+        }
+        return yml;
+    }
+
+    private void save(YamlConfiguration yml, File file) {
+        try {
+            yml.save(file);
+        } catch (IOException e) {
+            getLogger().warning(file.getName() + " konnte nicht gespeichert werden: " + e.getMessage());
+        }
     }
 
     public Settings settings() {
@@ -142,7 +175,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
             case "reload" -> {
                 loadSettings();
                 arena.load();
-                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Config neu geladen.");
+                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "config.yml, roles.yml und gold.yml neu geladen.");
             }
             case "info" -> {
                 p.sendMessage(Util.PREFIX + "Lobby: " + (arena.getLobby() != null ? ChatColor.GREEN + "gesetzt" : ChatColor.RED + "fehlt")

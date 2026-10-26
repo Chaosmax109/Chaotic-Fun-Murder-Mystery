@@ -28,75 +28,7 @@ lobby:
   # wird er zurückteleportiert (damit niemand vor Rundenstart auf die Map läuft). 0 = aus.
   max-distance: 40
 
-# ------------------------------- Rollen -------------------------------
-roles:
-  # Erschießt ein Unschuldiger einen anderen Unschuldigen, stirbt der Schütze ebenfalls.
-  team-kill-kills-shooter: true
-
-  murderer:
-    # Anzahl Mörder pro Runde
-    amount: 1
-    # Pro so vielen Spielern kommt ein weiterer Mörder dazu (z. B. 10 → ab 10 Spielern 2 Mörder). 0 = aus.
-    extra-per-players: 0
-    name: "Mörder"
-    color: "&c"
-    title: "&cMÖRDER"
-    subtitle: "&7Töte alle Spieler!"
-    message: "Du bist der &cMörder&7! Töte alle, ohne erwischt zu werden. Rechtsklick mit dem Messer wirft es."
-    weapon:
-      material: IRON_SWORD
-      name: "&cMesser"
-    # Messer per Rechtsklick werfen
-    knife-throw: true
-    # Abklingzeit des Messerwurfs in Sekunden
-    knife-cooldown: 5
-    # Flugweite des Messers in Blöcken
-    knife-range: 40
-    # Darf der Mörder Gold sammeln (und sich so einen Bogen holen)?
-    can-collect-gold: true
-
-  detective:
-    amount: 1
-    extra-per-players: 0
-    name: "Detektiv"
-    color: "&b"
-    title: "&bDETEKTIV"
-    subtitle: "&7Finde und erschieße den Mörder!"
-    message: "Du bist der &bDetektiv&7! Du hast einen Bogen mit unendlich Pfeilen. Erschieße den Mörder!"
-    weapon:
-      # BOW oder CROSSBOW
-      material: BOW
-      name: "&bBogen des Detektivs"
-    # Sekunden, bis nach einem Schuss ein neuer Pfeil kommt
-    arrow-cooldown: 5
-    can-collect-gold: true
-
-  innocent:
-    name: "Unschuldig"
-    color: "&a"
-    title: "&aUNSCHULDIG"
-    subtitle: "&7Überlebe so lange wie möglich!"
-    message: "Du bist &aunschuldig&7! Sammle Gold für einen Bogen und überlebe."
-    can-collect-gold: true
-
-# -------------------------------- Gold --------------------------------
-gold:
-  enabled: true
-  # Item, das als Gold auf der Map erscheint
-  material: GOLD_INGOT
-  # Alle wie viele Sekunden Gold erscheint
-  interval: 8
-  # An wie vielen Gold-Spawns pro Intervall gleichzeitig Gold erscheint
-  spawns-per-interval: 1
-  # Höchstens so viele Gold-Items gleichzeitig auf der Map (0 = so viele wie Gold-Spawns)
-  max-on-map: 0
-  # Wie viel Gold ein aufgesammeltes Item zählt
-  amount-per-pickup: 1
-  # Wie viel Gold man für einen Bogen braucht
-  for-bow: 10
-  # Pfeile, die man pro eingelöstem Gold-Paket bekommt
-  arrows-per-bow: 1
-  bow-name: "&eBogen"
+# Rollen: roles.yml – Gold: gold.yml (beide im selben Ordner)
 
 # Wird per Befehl gesetzt (/mm setlobby, /mm addspawn, /mm addgold).
 arena:

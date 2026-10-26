@@ -1,0 +1,54 @@
+# ===============================
+#   Murder Mystery – Rollen
+# ===============================
+# Farbcodes mit & (z. B. &c = rot, &a = grün, &7 = grau).
+# Nach Änderungen: /mm reload
+
+# Erschießt ein Unschuldiger einen anderen Unschuldigen, stirbt der Schütze ebenfalls.
+team-kill-kills-shooter: true
+
+murderer:
+  # Anzahl Mörder pro Runde
+  amount: 1
+  # Pro so vielen Spielern kommt ein weiterer Mörder dazu (z. B. 10 → ab 10 Spielern 2 Mörder). 0 = aus.
+  extra-per-players: 0
+  name: "Mörder"
+  color: "&c"
+  title: "&cMÖRDER"
+  subtitle: "&7Töte alle Spieler!"
+  message: "Du bist der &cMörder&7! Töte alle, ohne erwischt zu werden. Rechtsklick mit dem Messer wirft es."
+  weapon:
+    material: IRON_SWORD
+    name: "&cMesser"
+  # Messer per Rechtsklick werfen
+  knife-throw: true
+  # Abklingzeit des Messerwurfs in Sekunden
+  knife-cooldown: 5
+  # Flugweite des Messers in Blöcken
+  knife-range: 40
+  # Darf der Mörder Gold sammeln (und sich so einen Bogen holen)?
+  can-collect-gold: true
+
+detective:
+  amount: 1
+  extra-per-players: 0
+  name: "Detektiv"
+  color: "&b"
+  title: "&bDETEKTIV"
+  subtitle: "&7Finde und erschieße den Mörder!"
+  message: "Du bist der &bDetektiv&7! Du hast einen Bogen mit unendlich Pfeilen. Erschieße den Mörder!"
+  weapon:
+    # BOW oder CROSSBOW
+    material: BOW
+    name: "&bBogen des Detektivs"
+  # Sekunden, bis nach einem Schuss ein neuer Pfeil kommt
+  arrow-cooldown: 5
+  can-collect-gold: true
+
+innocent:
+  name: "Unschuldig"
+  color: "&a"
+  title: "&aUNSCHULDIG"
+  subtitle: "&7Überlebe so lange wie möglich!"
+  message: "Du bist &aunschuldig&7! Sammle Gold für einen Bogen und überlebe."
+  can-collect-gold: true
