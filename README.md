@@ -28,7 +28,7 @@ Die fertigen Plugin-Dateien gibt es unter [Releases](../../releases):
 
 | Datei | Server |
 |---|---|
-| `MurderMystery-2.2.0.jar` | Paper 26.2, Java 25 (aktuell) |
+| `MurderMystery-2.2.1.jar` | Paper 26.2, Java 25 (aktuell) |
 | `MurderMystery-26.2.jar` | Paper 26.2, Java 25 (Version 2.0.0) |
 | `MurderMystery-1.8.8.jar` | Spigot/Paper 1.8.8, Java 8 (ältere Version) |
 
