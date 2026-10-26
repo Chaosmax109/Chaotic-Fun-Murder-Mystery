@@ -1,6 +1,8 @@
 # ===============================
 #   Murder Mystery – Einstellungen
 # ===============================
+# Farbcodes mit & (z. B. &c = rot, &a = grün, &7 = grau).
+# Nach Änderungen: /mm reload
 
 # Spieler treten beim Betreten des Servers automatisch der Lobby bei.
 auto-join: true
@@ -16,17 +18,17 @@ lobby-countdown: 30
 grace-period: 10
 # Rundendauer in Sekunden. Läuft die Zeit ab, gewinnen die Unschuldigen.
 game-duration: 270
-# Sekunden, bis der Detektiv einen neuen Pfeil bekommt.
-arrow-cooldown: 5
-# Abklingzeit des Messerwurfs (Rechtsklick mit dem Schwert) in Sekunden.
-knife-cooldown: 5
-# Alle wie viele Sekunden Gold an den Gold-Spawns erscheint.
-gold-interval: 8
-# Wie viel Gold man für einen Bogen + Pfeil braucht.
-gold-for-bow: 10
 
 # Text in der letzten Zeile des Scoreboards.
 server-name: "&edein-server.de"
+
+lobby:
+  # Die Lobby darf in derselben Welt wie die Map liegen.
+  # Entfernt sich ein wartender Spieler weiter als so viele Blöcke von der Lobby,
+  # wird er zurückteleportiert (damit niemand vor Rundenstart auf die Map läuft). 0 = aus.
+  max-distance: 40
+
+# Rollen: roles.yml – Gold: gold.yml (beide im selben Ordner)
 
 # Wird per Befehl gesetzt (/mm setlobby, /mm addspawn, /mm addgold).
 arena:

@@ -4,11 +4,20 @@ main: de.murdermystery.MurderMysteryPlugin
 api-version: '1.21'
 description: Murder Mystery Spielmodus (Mörder, Detektiv, Unschuldige)
 author: Chaosmax109
+# Datenbank-Bibliotheken für die Stats – Paper lädt sie beim ersten Start automatisch herunter
+libraries:
+  - com.zaxxer:HikariCP:7.1.0
+  - com.mysql:mysql-connector-j:26.7.0
+  - org.mariadb.jdbc:mariadb-java-client:3.5.11
 commands:
   mm:
     description: Murder Mystery Befehle
     usage: /mm help
     aliases: [murdermystery, murder]
+  stats:
+    description: Zeigt deine Murder-Mystery-Statistiken in einem Menü
+    usage: /stats [Spieler]
+    aliases: [mmstats]
 permissions:
   mm.admin:
     description: Arena einrichten und Spiele steuern

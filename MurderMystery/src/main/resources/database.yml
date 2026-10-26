@@ -1,0 +1,22 @@
+# ===============================
+#   Murder Mystery – Datenbank
+# ===============================
+# Statistiken (/stats) werden in einer MySQL- oder MariaDB-Datenbank gespeichert.
+# Ohne Datenbank (enabled: false oder keine Verbindung) sind die Stats deaktiviert.
+# Nach Änderungen: /mm reload
+
+enabled: false
+
+# mysql oder mariadb
+type: mysql
+host: localhost
+port: 3306
+database: minecraft
+username: minecraft
+password: ""
+
+# Präfix für die Tabellennamen (es werden <präfix>players und <präfix>role_kills angelegt)
+table-prefix: "mm_"
+use-ssl: false
+# Anzahl gleichzeitiger Verbindungen
+pool-size: 4
