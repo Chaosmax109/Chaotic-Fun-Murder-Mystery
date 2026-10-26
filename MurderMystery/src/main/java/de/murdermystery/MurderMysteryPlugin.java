@@ -15,6 +15,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
 
 public class MurderMysteryPlugin extends JavaPlugin {
 
@@ -26,9 +28,8 @@ public class MurderMysteryPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        loadSettings();
         stats = new StatsManager(this);
-        stats.load();
+        loadSettings();
         arena = new Arena(this);
         arena.load();
         game = new Game(this, arena);
@@ -53,34 +54,44 @@ public class MurderMysteryPlugin extends JavaPlugin {
             game.shutdown();
         }
         if (stats != null) {
-            stats.save();
+            stats.close();
         }
     }
 
+    /** Lädt config.yml, roles.yml, gold.yml und database.yml (neu) und verbindet die Datenbank. */
     private void loadSettings() {
         reloadConfig();
-        File rolesFile = new File(getDataFolder(), "roles.yml");
-        File goldFile = new File(getDataFolder(), "gold.yml");
-        if (!rolesFile.exists()) saveResource("roles.yml", false);
-        if (!goldFile.exists()) saveResource("gold.yml", false);
-        YamlConfiguration roles = loadWithDefaults(rolesFile);
-        YamlConfiguration gold = loadWithDefaults(goldFile);
+        File rolesFile = file("roles.yml");
+        File goldFile = file("gold.yml");
+        File dbFile = file("database.yml");
+        // roles.yml ohne Standardwerte laden: sonst kämen gelöschte Beispielrollen bei jedem Reload zurück
+        YamlConfiguration roles = YamlConfiguration.loadConfiguration(rolesFile);
+        YamlConfiguration gold = loadWithDefaults(goldFile, true);
+        YamlConfiguration db = loadWithDefaults(dbFile, true);
 
         if (Settings.migrate(getConfig(), roles, gold)) {
-            getLogger().info("Rollen- und Gold-Einstellungen wurden aus der config.yml nach roles.yml und gold.yml verschoben.");
+            getLogger().info("Einstellungen wurden ins aktuelle Format umgestellt (roles.yml / gold.yml).");
         }
         // Neue Einstellungen aus Updates in die vorhandenen Dateien übernehmen
         getConfig().options().copyDefaults(true);
         saveConfig();
         save(roles, rolesFile);
         save(gold, goldFile);
+        save(db, dbFile);
         settings = new Settings(getConfig(), roles, gold, getLogger());
+        stats.connect(db);
     }
 
-    private YamlConfiguration loadWithDefaults(File file) {
+    private File file(String name) {
+        File f = new File(getDataFolder(), name);
+        if (!f.exists()) saveResource(name, false);
+        return f;
+    }
+
+    private YamlConfiguration loadWithDefaults(File file, boolean copy) {
         YamlConfiguration yml = YamlConfiguration.loadConfiguration(file);
         InputStream in = getResource(file.getName());
-        if (in != null) {
+        if (in != null && copy) {
             yml.setDefaults(YamlConfiguration.loadConfiguration(new InputStreamReader(in, StandardCharsets.UTF_8)));
             yml.options().copyDefaults(true);
         }
@@ -175,7 +186,8 @@ public class MurderMysteryPlugin extends JavaPlugin {
             case "reload" -> {
                 loadSettings();
                 arena.load();
-                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "config.yml, roles.yml und gold.yml neu geladen.");
+                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "config.yml, roles.yml, gold.yml und database.yml neu geladen. Stats: "
+                        + (stats.isEnabled() ? ChatColor.GREEN + "aktiv" : ChatColor.RED + "deaktiviert"));
             }
             case "info" -> {
                 p.sendMessage(Util.PREFIX + "Lobby: " + (arena.getLobby() != null ? ChatColor.GREEN + "gesetzt" : ChatColor.RED + "fehlt")
@@ -193,17 +205,23 @@ public class MurderMysteryPlugin extends JavaPlugin {
     }
 
     private void openStats(Player p, String name) {
-        StatsManager.PlayerStats st = name == null ? stats.get(p.getUniqueId()) : stats.findByName(name);
-        if (st == null) {
-            st = name == null
-                    ? new StatsManager.PlayerStats(p.getUniqueId(), p.getName(), 0, 0, 0, 0, 0, 0, 0)
-                    : null;
-        }
-        if (st == null) {
-            p.sendMessage(Util.PREFIX + ChatColor.RED + "Für " + name + " gibt es noch keine Stats.");
+        if (!stats.isEnabled()) {
+            p.sendMessage(Util.PREFIX + ChatColor.RED + "Statistiken sind deaktiviert (keine Datenbank verbunden).");
             return;
         }
-        p.openInventory(new StatsMenu(st, settings).getInventory());
+        Consumer<StatsManager.PlayerStats> show = st -> {
+            if (!p.isOnline()) return;
+            if (st == null && name == null) {
+                st = new StatsManager.PlayerStats(p.getUniqueId(), p.getName(), 0, 0, 0, 0, Map.of());
+            }
+            if (st == null) {
+                p.sendMessage(Util.PREFIX + ChatColor.RED + "Für " + name + " gibt es noch keine Stats.");
+                return;
+            }
+            p.openInventory(new StatsMenu(st, settings).getInventory());
+        };
+        if (name == null) stats.load(p.getUniqueId(), show);
+        else stats.loadByName(name, show);
     }
 
     private void listPoints(Player p, String title, List<String> raw) {

@@ -108,7 +108,7 @@ public class GameListener implements Listener {
         }
         if (e.getHand() != EquipmentSlot.HAND) return; // Event kommt sonst für Haupt- und Nebenhand doppelt
         if ((e.getAction() == Action.RIGHT_CLICK_AIR || e.getAction() == Action.RIGHT_CLICK_BLOCK)
-                && game.isKnife(e.getItem())) {
+                && game.isKnife(p, e.getItem())) {
             e.setCancelled(true);
             game.throwKnife(p);
         }

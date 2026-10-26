@@ -15,9 +15,10 @@ Ein Spieler ist der **Mörder**, einer der **Detektiv**, alle anderen sind **uns
 - Tote werden Zuschauer mit eigenem Chat
 - Automatische Lobby mit Countdown, die nächste Runde startet von selbst. Die Lobby kann in derselben Welt wie die Map liegen.
 - Eigener Spawnpunkt für jeden Spieler beim Rundenstart, Spawns per Befehl verwalten
-- Rollen anpassbar in eigener `roles.yml`: Anzahl Mörder/Detektive, Namen, Farben, Texte, Waffen, Abklingzeiten
+- Rollen in eigener `roles.yml`: eigene Rollen hinzufügen (Team, Waffe, Effekte), Anzahl, Texte, Abklingzeiten
+- Wahrscheinlichkeit pro Rolle einstellbar, Anzeige der eigenen Chancen in der Lobby (abschaltbar)
 - Gold anpassbar in eigener `gold.yml`: Item, Intervall, Menge, Preis für den Bogen
-- Statistiken mit Menü (`/stats`): Kills (gesamt und pro Rolle), Tode, Wins, Loses, Winrate
+- Statistiken in MySQL/MariaDB mit Menü (`/stats`): Kills (gesamt und pro Rolle), Tode, Wins, Loses, Winrate. Ohne Datenbank sind die Stats deaktiviert (Standard).
 
 ## Download
 

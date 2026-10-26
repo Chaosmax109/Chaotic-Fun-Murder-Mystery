@@ -29,6 +29,13 @@
             <version>26.2.build.135-stable</version>
             <scope>provided</scope>
         </dependency>
+        <!-- Wird zur Laufzeit von Paper über "libraries" in der plugin.yml geladen -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>7.1.0</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>

@@ -70,40 +70,101 @@ Tipp: OPs im **Kreativmodus** sind vom Block-/Inventarschutz ausgenommen – zum
 
 ## 6. Einstellungen
 
-Im Ordner `plugins/MurderMystery/` liegen drei Dateien:
+Im Ordner `plugins/MurderMystery/` liegen vier Dateien:
 
 | Datei | Inhalt |
 |---|---|
 | `config.yml` | Allgemeines: Auto-Join, Spielerzahlen, Zeiten, Lobby, Arena-Punkte |
-| `roles.yml` | Alles zu den Rollen Mörder, Detektiv, Unschuldig |
+| `roles.yml` | Alle Rollen (auch eigene) und die Anzeige der Wahrscheinlichkeiten |
 | `gold.yml` | Alles zum Gold |
+| `database.yml` | Datenbank-Verbindung für die Statistiken |
 
-Nach Änderungen `/mm reload` ausführen, das lädt alle drei neu. Jede Einstellung ist in den Dateien kommentiert. Die wichtigsten:
+Nach Änderungen `/mm reload` ausführen, das lädt alle Dateien neu und verbindet die Datenbank neu. Jede Einstellung ist in den Dateien kommentiert.
 
-**Rollen** (`roles.yml`, Abschnitte `murderer`, `detective`, `innocent`):
-- `amount` und `extra-per-players`: wie viele Mörder bzw. Detektive es gibt. Beispiel: `amount: 1`, `extra-per-players: 8` bedeutet ab 8 Spielern 2 Mörder, ab 16 Spielern 3.
-  Bei mehreren Mördern kennen sie sich gegenseitig und können sich nicht töten.
-- `name`, `color`, `title`, `subtitle`, `message`: Anzeigename, Farbe und Texte beim Rundenstart.
-- `weapon.material` / `weapon.name`: Waffe der Rolle (z. B. `DIAMOND_SWORD` für den Mörder, `BOW` oder `CROSSBOW` für den Detektiv).
-- Mörder: `knife-throw`, `knife-cooldown`, `knife-range`. Detektiv: `arrow-cooldown`.
-- `can-collect-gold`: ob die Rolle Gold sammeln darf.
-- `team-kill-kills-shooter`: ob ein Unschuldiger stirbt, wenn er einen anderen Unschuldigen erschießt.
+### Rollen (`roles.yml`)
 
-**Gold** (`gold.yml`):
+Alle Rollen stehen unter `roles:`. Eingebaut sind `murderer` (Mörder), `detective` (Detektiv) und `innocent` (Unschuldig). Dazu kommt die Beispielrolle `runner` (Läufer), die mit `chance: 0` ausgeschaltet ist.
+
+- `innocent` ist Pflicht: Diese Rolle bekommen alle, die keine andere Rolle erhalten.
+- Es muss mindestens eine Rolle mit `team: MURDERER` geben.
+
+**Eigene Rolle hinzufügen:** einen neuen Abschnitt unter `roles:` anlegen, z. B. so:
+
+```yaml
+roles:
+  # ... murderer, detective, innocent ...
+  sheriff:
+    team: INNOCENT
+    amount: 1
+    chance: 25          # in 25 % der Runden gibt es einen Sheriff
+    show-chance: true
+    name: "Sheriff"
+    color: "&6"
+    title: "&6SHERIFF"
+    subtitle: "&7Du hast eine Armbrust!"
+    message: "Du bist der &6Sheriff&7! Deine Armbrust lädt sich nach jedem Schuss neu."
+    weapon:
+      type: BOW
+      material: CROSSBOW
+      name: "&6Armbrust des Sheriffs"
+    arrow-cooldown: 8
+    can-collect-gold: true
+    can-pickup-bow: true
+    effects: []
+```
+
+Was jede Rolle einstellen kann:
+
+| Einstellung | Bedeutung |
+|---|---|
+| `team` | `MURDERER` (gewinnt, wenn alle anderen tot sind) oder `INNOCENT` |
+| `amount`, `extra-per-players` | Wie viele Spieler die Rolle bekommen. Beispiel: `amount: 1`, `extra-per-players: 8` bedeutet ab 8 Spielern 2, ab 16 Spielern 3 |
+| `chance` | Wahrscheinlichkeit in Prozent, dass die Rolle in einer Runde vergeben wird (`100` = immer, `0` = nie) |
+| `show-chance` | Wahrscheinlichkeit dieser Rolle in der Lobby anzeigen |
+| `name`, `color`, `title`, `subtitle`, `message` | Anzeigename, Farbe und Texte beim Rundenstart |
+| `weapon.type` | `KNIFE` (Nahkampf + Werfen), `BOW` (Bogen/Armbrust mit Pfeil-Nachladen) oder `NONE` |
+| `weapon.material`, `weapon.name` | Item und Name der Waffe |
+| `knife-throw`, `knife-cooldown`, `knife-range` | Nur für `KNIFE` |
+| `arrow-cooldown` | Nur für `BOW`: Sekunden bis zum nächsten Pfeil |
+| `can-collect-gold` | Darf Gold sammeln |
+| `can-pickup-bow` | Darf den Bogen eines toten Bogenträgers aufheben |
+| `effects` | Trankeffekte für die ganze Runde, z. B. `["SPEED:1", "JUMP_BOOST:2"]` (Zahl = Stufe) |
+| `icon` | Item für die Rolle im Stats-Menü (Standard: die Waffe) |
+
+Die Rollen werden in der Reihenfolge aus der Datei vergeben. Mehrere Spieler im Team `MURDERER` kennen sich gegenseitig und können sich nicht töten. Tötet ein Unschuldiger einen anderen Unschuldigen, stirbt er mit, außer `team-kill-kills-shooter: false` ist gesetzt.
+
+**Wahrscheinlichkeits-Anzeige:** In der Lobby zeigt das Scoreboard unter „Deine Chancen“, mit welcher Wahrscheinlichkeit man welche Rolle bekommt, abhängig von der aktuellen Spielerzahl. Für alle Rollen abschalten mit `show-chances: false` ganz oben in der `roles.yml`. Für einzelne Rollen geht das mit `show-chance: false`.
+
+### Gold (`gold.yml`)
+
 - `enabled`, `material` (z. B. `GOLD_INGOT`, `GOLD_NUGGET`, `EMERALD`)
 - `interval`: alle wie viele Sekunden Gold erscheint. `spawns-per-interval`: an wie vielen Punkten gleichzeitig.
 - `max-on-map`: höchstens so viele Gold-Items gleichzeitig (0 = so viele wie Gold-Spawns)
 - `amount-per-pickup`, `for-bow`, `arrows-per-bow`, `bow-name`
 
-Ältere Configs werden beim ersten Start automatisch umgestellt: Rollen- und Gold-Einstellungen aus der `config.yml` wandern samt deinen Werten in `roles.yml` und `gold.yml`. Lobby und Spawns bleiben in der `config.yml` erhalten.
+Ältere Configs werden beim ersten Start automatisch umgestellt. Deine Werte bleiben dabei erhalten.
 
-## 7. Statistiken
+## 7. Statistiken (Datenbank)
+
+Statistiken brauchen eine **MySQL- oder MariaDB-Datenbank** und sind **standardmäßig deaktiviert**. Ohne Datenbank meldet `/stats`, dass die Stats deaktiviert sind, und es wird nichts gespeichert.
+
+So schaltest du sie ein:
+1. Eine Datenbank und einen Benutzer anlegen (bei vielen Hostern per Webinterface möglich), z. B.:
+   ```sql
+   CREATE DATABASE minecraft;
+   CREATE USER 'minecraft'@'%' IDENTIFIED BY 'geheimes-passwort';
+   GRANT ALL PRIVILEGES ON minecraft.* TO 'minecraft'@'%';
+   ```
+2. In `plugins/MurderMystery/database.yml` die Zugangsdaten eintragen und `enabled: true` setzen.
+3. `/mm reload` oder Server neu starten. Im Log steht dann „Mit der Datenbank verbunden – Stats sind aktiv.“
+
+Die Tabellen (`mm_players`, `mm_role_kills`) legt das Plugin selbst an. Die Datenbank-Treiber lädt Paper beim ersten Start automatisch herunter, dafür braucht der Server einmal Internetzugang.
+Ist die Datenbank nicht erreichbar, steht im Log „Keine Verbindung zur Datenbank – Stats sind deaktiviert“, und das Spiel läuft ganz normal ohne Stats weiter.
 
 `/stats` öffnet ein Menü mit deinen Statistiken, `/stats <Spieler>` zeigt die eines anderen Spielers:
 
-- **Kills** gesamt, aufgeteilt nach Rolle (als Mörder, als Detektiv, als Unschuldiger)
+- **Kills** gesamt und pro Rolle (auch für eigene Rollen)
 - **Tode**, **Wins**, **Loses**, **Winrate** (und K/D)
 
-Gezählt werden nur echte Kills: Mörder tötet Nicht-Mörder, oder ein Nicht-Mörder tötet einen Mörder. Wer einen Unschuldigen erschießt, bekommt keinen Kill.
+Gezählt werden nur echte Kills: das Mörder-Team tötet einen Gegner oder umgekehrt. Wer einen Unschuldigen tötet, bekommt keinen Kill.
 Wer eine Runde vorzeitig verlässt, bekommt eine Niederlage. Mit `/mm stop` abgebrochene Runden zählen nicht.
-Gespeichert wird in `plugins/MurderMystery/stats.yml`.

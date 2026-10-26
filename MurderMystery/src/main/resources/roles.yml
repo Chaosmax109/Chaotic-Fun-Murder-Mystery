@@ -4,51 +4,112 @@
 # Farbcodes mit & (z. B. &c = rot, &a = grün, &7 = grau).
 # Nach Änderungen: /mm reload
 
-# Erschießt ein Unschuldiger einen anderen Unschuldigen, stirbt der Schütze ebenfalls.
+# Erschießt/ersticht ein Unschuldiger einen anderen Unschuldigen, stirbt er ebenfalls.
 team-kill-kills-shooter: true
 
-murderer:
-  # Anzahl Mörder pro Runde
-  amount: 1
-  # Pro so vielen Spielern kommt ein weiterer Mörder dazu (z. B. 10 → ab 10 Spielern 2 Mörder). 0 = aus.
-  extra-per-players: 0
-  name: "Mörder"
-  color: "&c"
-  title: "&cMÖRDER"
-  subtitle: "&7Töte alle Spieler!"
-  message: "Du bist der &cMörder&7! Töte alle, ohne erwischt zu werden. Rechtsklick mit dem Messer wirft es."
-  weapon:
-    material: IRON_SWORD
-    name: "&cMesser"
-  # Messer per Rechtsklick werfen
-  knife-throw: true
-  # Abklingzeit des Messerwurfs in Sekunden
-  knife-cooldown: 5
-  # Flugweite des Messers in Blöcken
-  knife-range: 40
-  # Darf der Mörder Gold sammeln (und sich so einen Bogen holen)?
-  can-collect-gold: true
+# Zeigt wartenden Spielern im Scoreboard, mit welcher Wahrscheinlichkeit sie welche Rolle bekommen.
+# Pro Rolle lässt sich die Anzeige zusätzlich mit "show-chance: false" ausblenden.
+show-chances: true
 
-detective:
-  amount: 1
-  extra-per-players: 0
-  name: "Detektiv"
-  color: "&b"
-  title: "&bDETEKTIV"
-  subtitle: "&7Finde und erschieße den Mörder!"
-  message: "Du bist der &bDetektiv&7! Du hast einen Bogen mit unendlich Pfeilen. Erschieße den Mörder!"
-  weapon:
-    # BOW oder CROSSBOW
-    material: BOW
-    name: "&bBogen des Detektivs"
-  # Sekunden, bis nach einem Schuss ein neuer Pfeil kommt
-  arrow-cooldown: 5
-  can-collect-gold: true
+# ---------------------------------------------------------------------------
+# Rollen
+# ---------------------------------------------------------------------------
+# Eigene Rollen hinzufügen: einfach einen neuen Abschnitt unter "roles:" anlegen
+# (Name ohne Leerzeichen, z. B. "sheriff:"). Siehe das Beispiel "runner" ganz unten.
+#
+# Die Rolle "innocent" ist Pflicht: Sie bekommen alle Spieler, die keine andere Rolle erhalten.
+# Es muss mindestens eine Rolle mit "team: MURDERER" geben.
+#
+# Mögliche Einstellungen pro Rolle:
+#   team:              MURDERER (gewinnt, wenn alle anderen tot sind) oder INNOCENT
+#   amount:            wie viele Spieler die Rolle bekommen
+#   extra-per-players: pro so vielen Spielern einer mehr (z. B. 10 → ab 10 Spielern +1). 0 = aus
+#   chance:            Wahrscheinlichkeit in Prozent, dass die Rolle in einer Runde vergeben wird (100 = immer)
+#   show-chance:       Wahrscheinlichkeit im Lobby-Scoreboard anzeigen (true/false)
+#   name, color, title, subtitle, message: Anzeigename, Farbe und Texte beim Rundenstart
+#   weapon.type:       KNIFE (Nahkampf + Werfen), BOW (Bogen mit Pfeil-Nachladen) oder NONE
+#   weapon.material:   Item der Waffe, z. B. IRON_SWORD, DIAMOND_SWORD, BOW, CROSSBOW
+#   weapon.name:       Name des Items
+#   knife-throw, knife-cooldown, knife-range: nur für KNIFE
+#   arrow-cooldown:    nur für BOW – Sekunden bis zum nächsten Pfeil
+#   can-collect-gold:  darf Gold sammeln
+#   can-pickup-bow:    darf den Bogen eines toten Bogenträgers aufheben
+#   effects:           Trankeffekte für die ganze Runde, z. B. ["SPEED:1", "JUMP_BOOST:2"]
+#   icon:              Item im Stats-Menü (Standard: die Waffe)
 
-innocent:
-  name: "Unschuldig"
-  color: "&a"
-  title: "&aUNSCHULDIG"
-  subtitle: "&7Überlebe so lange wie möglich!"
-  message: "Du bist &aunschuldig&7! Sammle Gold für einen Bogen und überlebe."
-  can-collect-gold: true
+roles:
+  murderer:
+    team: MURDERER
+    amount: 1
+    extra-per-players: 0
+    chance: 100
+    show-chance: true
+    name: "Mörder"
+    color: "&c"
+    title: "&cMÖRDER"
+    subtitle: "&7Töte alle Spieler!"
+    message: "Du bist der &cMörder&7! Töte alle, ohne erwischt zu werden. Rechtsklick mit dem Messer wirft es."
+    weapon:
+      type: KNIFE
+      material: IRON_SWORD
+      name: "&cMesser"
+    knife-throw: true
+    knife-cooldown: 5
+    knife-range: 40
+    can-collect-gold: true
+    can-pickup-bow: false
+    effects: []
+
+  detective:
+    team: INNOCENT
+    amount: 1
+    extra-per-players: 0
+    chance: 100
+    show-chance: true
+    name: "Detektiv"
+    color: "&b"
+    title: "&bDETEKTIV"
+    subtitle: "&7Finde und erschieße den Mörder!"
+    message: "Du bist der &bDetektiv&7! Du hast einen Bogen mit unendlich Pfeilen. Erschieße den Mörder!"
+    weapon:
+      type: BOW
+      material: BOW
+      name: "&bBogen des Detektivs"
+    arrow-cooldown: 5
+    can-collect-gold: true
+    can-pickup-bow: true
+    effects: []
+
+  innocent:
+    team: INNOCENT
+    name: "Unschuldig"
+    color: "&a"
+    title: "&aUNSCHULDIG"
+    subtitle: "&7Überlebe so lange wie möglich!"
+    message: "Du bist &aunschuldig&7! Sammle Gold für einen Bogen und überlebe."
+    weapon:
+      type: NONE
+    can-collect-gold: true
+    can-pickup-bow: true
+    effects: []
+    icon: GOLD_INGOT
+
+  # Beispiel für eine eigene Rolle: ein Unschuldiger, der schneller rennt.
+  # chance: 0 = ausgeschaltet. Auf z. B. 30 setzen, dann gibt es in 30 % der Runden einen Läufer.
+  runner:
+    team: INNOCENT
+    amount: 1
+    extra-per-players: 0
+    chance: 0
+    show-chance: true
+    name: "Läufer"
+    color: "&e"
+    title: "&eLÄUFER"
+    subtitle: "&7Du bist schneller als alle anderen!"
+    message: "Du bist der &eLäufer&7 (unschuldig)! Du rennst schneller – nutze das, um zu entkommen."
+    weapon:
+      type: NONE
+    can-collect-gold: true
+    can-pickup-bow: true
+    effects: ["SPEED:1"]
+    icon: FEATHER
