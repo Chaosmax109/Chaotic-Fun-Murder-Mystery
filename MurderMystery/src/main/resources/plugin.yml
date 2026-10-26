@@ -9,6 +9,10 @@ commands:
     description: Murder Mystery Befehle
     usage: /mm help
     aliases: [murdermystery, murder]
+  stats:
+    description: Zeigt deine Murder-Mystery-Statistiken in einem Menü
+    usage: /stats [Spieler]
+    aliases: [mmstats]
 permissions:
   mm.admin:
     description: Arena einrichten und Spiele steuern

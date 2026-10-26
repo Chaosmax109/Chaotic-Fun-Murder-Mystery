@@ -21,6 +21,7 @@ import org.bukkit.util.Vector;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -36,9 +37,6 @@ public class Game {
 
     private enum Winner { INNOCENTS, MURDERER, NONE }
 
-    private static final String KNIFE_NAME = ChatColor.RED + "Messer";
-    private static final String DETECTIVE_BOW_NAME = ChatColor.AQUA + "Bogen des Detektivs";
-    private static final String BOW_NAME = ChatColor.YELLOW + "Bogen";
     private static final int SLOT_WEAPON = 1;
     private static final int SLOT_GOLD = 8;
     private static final int SLOT_ARROW = 9;
@@ -53,12 +51,16 @@ public class Game {
     private final Set<UUID> alive = ConcurrentHashMap.newKeySet();
 
     private final Map<UUID, Role> roles = new HashMap<>();
+    private final Map<UUID, String> names = new HashMap<>();
+    private final Set<UUID> left = new HashSet<>();
     private final Map<UUID, Board> boards = new HashMap<>();
     private final Map<UUID, Integer> gold = new HashMap<>();
     private final Map<UUID, Long> knifeReady = new HashMap<>();
     private final Map<Integer, Item> goldItems = new HashMap<>();
     private final List<BukkitTask> knifeTasks = new ArrayList<>();
     private final List<ArmorStand> knives = new ArrayList<>();
+    private final Set<UUID> bowHolders = new HashSet<>(); // haben einen Detektiv-Bogen (unendlich Pfeile)
+    private final List<ArmorStand> droppedBows = new ArrayList<>();
 
     private State state = State.WAITING;
     private boolean forceStart;
@@ -67,13 +69,6 @@ public class Game {
     private int graceLeft;
     private int goldTimer;
     private int endCountdown;
-
-    private UUID murderer;
-    private UUID detective;
-    private UUID bowHolder; // hat den Detektiv-Bogen (unendlich Pfeile)
-    private ArmorStand droppedBow;
-    private String murdererName = "-";
-    private String detectiveName = "-";
     private String heroName;
 
     private BukkitTask ticker;
@@ -82,6 +77,10 @@ public class Game {
     public Game(MurderMysteryPlugin plugin, Arena arena) {
         this.plugin = plugin;
         this.arena = arena;
+    }
+
+    private Settings s() {
+        return plugin.settings();
     }
 
     // ------------------------------------------------------------------ Lifecycle
@@ -119,17 +118,19 @@ public class Game {
             return;
         }
         if (!arena.isReady()) {
-            p.sendMessage(Util.PREFIX + ChatColor.RED + "Die Arena ist noch nicht eingerichtet. (/mm setlobby, /mm addspawn)");
+            if (p.hasPermission("mm.admin")) {
+                p.sendMessage(Util.PREFIX + ChatColor.RED + "Die Arena ist noch nicht eingerichtet. (/mm setlobby, /mm addspawn)");
+            }
             return;
         }
         boards.put(p.getUniqueId(), new Board(p));
-        if (state == State.INGAME || state == State.ENDING || players.size() >= maxPlayers()) {
+        if (state == State.INGAME || state == State.ENDING || players.size() >= s().maxPlayers) {
             spectators.add(p.getUniqueId());
             prepare(p, GameMode.SPECTATOR);
             p.teleport(state == State.INGAME ? arena.getSpawns().get(0) : arena.getLobby());
             p.sendMessage(Util.PREFIX + "Eine Runde läuft gerade – du schaust zu und spielst in der nächsten Runde mit.");
             if (state == State.INGAME) {
-                boards.get(p.getUniqueId()).setHiddenNames(names(players), true);
+                boards.get(p.getUniqueId()).setHiddenNames(playerNames(players), true);
             }
             return;
         }
@@ -137,7 +138,7 @@ public class Game {
         prepare(p, GameMode.ADVENTURE);
         p.teleport(arena.getLobby());
         broadcast(ChatColor.YELLOW + p.getName() + ChatColor.GRAY + " ist beigetreten ("
-                + ChatColor.GREEN + players.size() + ChatColor.GRAY + "/" + ChatColor.GREEN + maxPlayers() + ChatColor.GRAY + ")");
+                + ChatColor.GREEN + players.size() + ChatColor.GRAY + "/" + ChatColor.GREEN + s().maxPlayers + ChatColor.GRAY + ")");
         updateBoards();
     }
 
@@ -152,21 +153,18 @@ public class Game {
         boards.remove(id);
         gold.remove(id);
 
+        if (state == State.INGAME && roles.containsKey(id)) {
+            left.add(id); // wer mitten in der Runde geht, bekommt eine Niederlage
+        }
         if (state == State.INGAME && alive.remove(id)) {
-            if (id.equals(bowHolder)) {
-                bowHolder = null;
+            if (bowHolders.remove(id)) {
                 dropBow(p.getLocation());
             }
             broadcast(ChatColor.YELLOW + p.getName() + ChatColor.GRAY + " hat das Spiel verlassen.");
-            if (id.equals(murderer)) {
-                broadcast(ChatColor.RED + "Der Mörder hat das Spiel verlassen!");
-                end(Winner.INNOCENTS);
-            } else {
-                checkWin();
-            }
+            checkWin();
         } else if (wasPlaying && state != State.INGAME) {
             broadcast(ChatColor.YELLOW + p.getName() + ChatColor.GRAY + " hat das Spiel verlassen ("
-                    + ChatColor.GREEN + players.size() + ChatColor.GRAY + "/" + ChatColor.GREEN + maxPlayers() + ChatColor.GRAY + ")");
+                    + ChatColor.GREEN + players.size() + ChatColor.GRAY + "/" + ChatColor.GREEN + s().maxPlayers + ChatColor.GRAY + ")");
         }
         if (!quitting) {
             resetToServer(p);
@@ -196,51 +194,64 @@ public class Game {
         }
     }
 
+    /** Hält wartende Spieler in der Nähe der Lobby, falls diese in derselben Welt wie die Map liegt. */
+    public void checkLobbyBounds(Player p) {
+        int max = s().lobbyMaxDistance;
+        if (max <= 0 || (state != State.WAITING && state != State.STARTING)) return;
+        if (!players.contains(p.getUniqueId()) || p.getGameMode() == GameMode.CREATIVE) return;
+        Location lobby = arena.getLobby();
+        if (lobby == null) return;
+        if (!p.getWorld().equals(lobby.getWorld()) || p.getLocation().distanceSquared(lobby) > (double) max * max) {
+            p.teleport(lobby);
+            p.sendMessage(Util.PREFIX + "Bleib in der Lobby, bis die Runde startet!");
+        }
+    }
+
     // ------------------------------------------------------------------ Ticks
 
     private void tick() {
         switch (state) {
-            case WAITING:
-                if (players.size() >= minPlayers() && arena.isReady()) {
+            case WAITING -> {
+                if (players.size() >= s().minPlayers && arena.isReady()) {
                     state = State.STARTING;
-                    countdown = plugin.getConfig().getInt("lobby-countdown", 30);
+                    countdown = s().lobbyCountdown;
                 }
-                break;
-            case STARTING:
-                if (players.size() < (forceStart ? 2 : minPlayers())) {
-                    state = State.WAITING;
-                    forceStart = false;
-                    broadcast(ChatColor.RED + "Zu wenige Spieler – Countdown abgebrochen.");
-                    break;
-                }
-                if (players.size() >= maxPlayers() && countdown > 10) {
-                    countdown = 10;
-                }
-                if (countdown <= 0) {
-                    startGame();
-                    break;
-                }
-                if (countdown == 30 || countdown == 20 || countdown == 10 || countdown <= 5) {
-                    broadcast("Die Runde startet in " + ChatColor.YELLOW + countdown + ChatColor.GRAY + " Sekunde" + (countdown == 1 ? "" : "n") + "!");
-                    for (Player p : online(players)) {
-                        Util.sound(p, 1f, "block.note_block.hat");
-                        if (countdown <= 5) {
-                            Util.title(p, ChatColor.YELLOW + "" + countdown, "");
-                        }
-                    }
-                }
-                countdown--;
-                break;
-            case INGAME:
-                tickGame();
-                break;
-            case ENDING:
+            }
+            case STARTING -> tickCountdown();
+            case INGAME -> tickGame();
+            case ENDING -> {
                 if (--endCountdown <= 0) {
                     reset();
                 }
-                break;
+            }
         }
         updateBoards();
+    }
+
+    private void tickCountdown() {
+        if (players.size() < (forceStart ? 2 : s().minPlayers)) {
+            state = State.WAITING;
+            forceStart = false;
+            broadcast(ChatColor.RED + "Zu wenige Spieler – Countdown abgebrochen.");
+            return;
+        }
+        if (players.size() >= s().maxPlayers && countdown > 10) {
+            countdown = 10;
+        }
+        if (countdown <= 0) {
+            startGame();
+            return;
+        }
+        if (countdown == 30 || countdown == 20 || countdown == 10 || countdown <= 5) {
+            broadcast("Die Runde startet in " + ChatColor.YELLOW + countdown + ChatColor.GRAY + " Sekunde" + (countdown == 1 ? "" : "n") + "!");
+            for (Player p : online(players)) {
+                Util.sound(p, 1f, "block.note_block.hat");
+                if (countdown <= 5) {
+                    Util.title(p, ChatColor.YELLOW + "" + countdown, "");
+                }
+            }
+        }
+        countdown--;
     }
 
     private void tickGame() {
@@ -250,7 +261,7 @@ public class Game {
                 giveWeapons();
             }
         }
-        if (++goldTimer >= plugin.getConfig().getInt("gold-interval", 8)) {
+        if (s().goldEnabled && ++goldTimer >= s().goldInterval) {
             goldTimer = 0;
             spawnGold();
         }
@@ -265,22 +276,26 @@ public class Game {
     }
 
     private void fastTick() {
-        if (state != State.INGAME || droppedBow == null) return;
-        Location bowLoc = droppedBow.getLocation();
-        for (Player p : online(alive)) {
-            if (p.getUniqueId().equals(murderer) || !p.getWorld().equals(bowLoc.getWorld())) continue;
-            if (p.getLocation().distanceSquared(bowLoc) <= 2.25) {
-                droppedBow.remove();
-                droppedBow = null;
-                bowHolder = p.getUniqueId();
-                PlayerInventory inv = p.getInventory();
-                inv.remove(Material.BOW);
-                inv.setItem(SLOT_WEAPON, item(Material.BOW, DETECTIVE_BOW_NAME));
-                addArrow(p);
-                Util.title(p, ChatColor.AQUA + "Du hast den Bogen!", ChatColor.GRAY + "Finde und erschieße den Mörder");
-                Util.sound(p, 1f, "entity.player.levelup");
-                broadcast(ChatColor.AQUA + "Jemand hat den Bogen des Detektivs aufgehoben!");
-                return;
+        if (state != State.INGAME || droppedBows.isEmpty()) return;
+        for (ArmorStand bow : new ArrayList<>(droppedBows)) {
+            Location bowLoc = bow.getLocation();
+            for (Player p : online(alive)) {
+                UUID id = p.getUniqueId();
+                if (roles.get(id) == Role.MURDERER || bowHolders.contains(id) || !p.getWorld().equals(bowLoc.getWorld())) continue;
+                if (p.getLocation().distanceSquared(bowLoc) <= 2.25) {
+                    bow.remove();
+                    droppedBows.remove(bow);
+                    bowHolders.add(id);
+                    PlayerInventory inv = p.getInventory();
+                    inv.remove(s().detective.weapon);
+                    inv.remove(Material.BOW);
+                    inv.setItem(SLOT_WEAPON, item(s().detective.weapon, s().detective.weaponName));
+                    addArrows(p, 1);
+                    Util.title(p, s().detective.color + "Du hast den Bogen!", ChatColor.GRAY + "Finde und erschieße den Mörder");
+                    Util.sound(p, 1f, "entity.player.levelup");
+                    broadcast(s().detective.color + "Jemand hat den Bogen des " + s().detective.name + "s aufgehoben!");
+                    break;
+                }
             }
         }
     }
@@ -289,95 +304,102 @@ public class Game {
 
     private void startGame() {
         List<Player> list = online(players);
-        if (list.size() < 2 || arena.getSpawns().isEmpty()) {
+        List<Location> spawns = new ArrayList<>(arena.getSpawns());
+        if (list.size() < 2 || spawns.isEmpty()) {
             state = State.WAITING;
             return;
         }
         state = State.INGAME;
         forceStart = false;
         Collections.shuffle(list);
+        Collections.shuffle(spawns);
         roles.clear();
+        names.clear();
+        left.clear();
         gold.clear();
         knifeReady.clear();
         alive.clear();
+        bowHolders.clear();
         heroName = null;
-        bowHolder = null;
 
-        murderer = list.get(0).getUniqueId();
-        detective = list.get(1).getUniqueId();
-        murdererName = list.get(0).getName();
-        detectiveName = list.get(1).getName();
+        int n = list.size();
+        int murderers = Math.max(1, Math.min(s().murderer.count(n), n - 1));
+        int detectives = Math.max(0, Math.min(s().detective.count(n), n - murderers));
 
-        List<Location> spawns = new ArrayList<>(arena.getSpawns());
-        Collections.shuffle(spawns);
-        for (int i = 0; i < list.size(); i++) {
+        for (int i = 0; i < n; i++) {
             Player p = list.get(i);
             UUID id = p.getUniqueId();
-            Role role = id.equals(murderer) ? Role.MURDERER : id.equals(detective) ? Role.DETECTIVE : Role.INNOCENT;
+            Role role = i < murderers ? Role.MURDERER : i < murderers + detectives ? Role.DETECTIVE : Role.INNOCENT;
             roles.put(id, role);
+            names.put(id, p.getName());
             alive.add(id);
             gold.put(id, 0);
             prepare(p, GameMode.ADVENTURE);
+            // Jeder Spieler bekommt einen eigenen Spawn, solange genug gesetzt sind
             p.teleport(spawns.get(i % spawns.size()));
-            switch (role) {
-                case MURDERER:
-                    Util.title(p, ChatColor.RED + "MÖRDER", ChatColor.GRAY + "Töte alle Spieler!");
-                    p.sendMessage(Util.PREFIX + "Du bist der " + ChatColor.RED + "Mörder" + ChatColor.GRAY
-                            + "! Töte alle, ohne erwischt zu werden. Rechtsklick mit dem Messer wirft es.");
-                    break;
-                case DETECTIVE:
-                    Util.title(p, ChatColor.AQUA + "DETEKTIV", ChatColor.GRAY + "Finde und erschieße den Mörder!");
-                    p.sendMessage(Util.PREFIX + "Du bist der " + ChatColor.AQUA + "Detektiv" + ChatColor.GRAY
-                            + "! Du hast einen Bogen mit unendlich Pfeilen. Erschieße den Mörder!");
-                    break;
-                default:
-                    Util.title(p, ChatColor.GREEN + "UNSCHULDIG", ChatColor.GRAY + "Überlebe so lange wie möglich!");
-                    p.sendMessage(Util.PREFIX + "Du bist " + ChatColor.GREEN + "unschuldig" + ChatColor.GRAY
-                            + "! Sammle " + goldForBow() + " Gold für einen Bogen und überlebe.");
-            }
+            Settings.RoleSettings rs = roleSettings(role);
+            Util.title(p, rs.title, rs.subtitle);
+            p.sendMessage(Util.PREFIX + rs.message);
             Util.sound(p, 1f, "entity.ender_dragon.growl");
+        }
+        if (murderers > 1) {
+            String partners = String.join(", ", namesOf(Role.MURDERER));
+            for (Player p : online(alive)) {
+                if (roles.get(p.getUniqueId()) == Role.MURDERER) {
+                    p.sendMessage(Util.PREFIX + "Die " + s().murderer.coloredName() + ChatColor.GRAY + " in dieser Runde: " + s().murderer.color + partners);
+                }
+            }
+        }
+        if (spawns.size() < n) {
+            plugin.getLogger().warning("Nur " + spawns.size() + " Spawns für " + n + " Spieler – einige Spieler teilen sich einen Spawn.");
         }
         for (Player p : online(spectators)) {
             p.teleport(spawns.get(0));
         }
         for (Board b : boards.values()) {
-            b.setHiddenNames(names(players), true);
+            b.setHiddenNames(playerNames(players), true);
         }
-        timeLeft = plugin.getConfig().getInt("game-duration", 270);
-        graceLeft = plugin.getConfig().getInt("grace-period", 10);
+        timeLeft = s().gameDuration;
+        graceLeft = s().gracePeriod;
         goldTimer = 0;
-        broadcast(ChatColor.YELLOW + "Die Waffen werden in " + graceLeft + " Sekunden verteilt!");
         if (graceLeft <= 0) {
             giveWeapons();
+        } else {
+            broadcast(ChatColor.YELLOW + "Die Waffen werden in " + graceLeft + " Sekunden verteilt!");
         }
     }
 
     private void giveWeapons() {
-        Player m = Bukkit.getPlayer(murderer);
-        if (m != null && alive.contains(murderer)) {
-            m.getInventory().setItem(SLOT_WEAPON, item(Material.IRON_SWORD, KNIFE_NAME));
-            m.sendMessage(Util.PREFIX + ChatColor.RED + "Du hast dein Messer erhalten!");
-            Util.sound(m, 1f, "entity.experience_orb.pickup");
+        for (Player p : online(alive)) {
+            Role role = roles.get(p.getUniqueId());
+            if (role == Role.MURDERER) {
+                p.getInventory().setItem(SLOT_WEAPON, item(s().murderer.weapon, s().murderer.weaponName));
+                p.sendMessage(Util.PREFIX + s().murderer.color + "Du hast deine Waffe erhalten!");
+                Util.sound(p, 1f, "entity.experience_orb.pickup");
+            } else if (role == Role.DETECTIVE) {
+                bowHolders.add(p.getUniqueId());
+                p.getInventory().setItem(SLOT_WEAPON, item(s().detective.weapon, s().detective.weaponName));
+                addArrows(p, 1);
+                p.sendMessage(Util.PREFIX + s().detective.color + "Du hast deinen Bogen erhalten!");
+                Util.sound(p, 1f, "entity.experience_orb.pickup");
+            }
         }
-        Player d = Bukkit.getPlayer(detective);
-        if (d != null && alive.contains(detective)) {
-            bowHolder = detective;
-            d.getInventory().setItem(SLOT_WEAPON, item(Material.BOW, DETECTIVE_BOW_NAME));
-            addArrow(d);
-            d.sendMessage(Util.PREFIX + ChatColor.AQUA + "Du hast deinen Bogen erhalten!");
-            Util.sound(d, 1f, "entity.experience_orb.pickup");
-        }
-        broadcast(ChatColor.RED + "Der Mörder hat sein Messer erhalten!");
+        broadcast(s().murderer.color + "Der " + s().murderer.name + " hat seine Waffe erhalten!");
     }
 
     private void kill(Player victim, Player killer, String reason) {
         UUID id = victim.getUniqueId();
         if (state != State.INGAME || !alive.remove(id)) return;
+        Role victimRole = roles.get(id);
 
-        if (id.equals(bowHolder)) {
-            bowHolder = null;
+        plugin.stats().addDeath(id, victim.getName());
+        if (killer != null && countsAsKill(killer.getUniqueId(), id)) {
+            plugin.stats().addKill(killer.getUniqueId(), killer.getName(), roles.get(killer.getUniqueId()));
+        }
+
+        if (bowHolders.remove(id)) {
             dropBow(victim.getLocation());
-            broadcast(ChatColor.AQUA + (roles.get(id) == Role.DETECTIVE ? "Der Detektiv" : "Der Bogenträger")
+            broadcast(s().detective.color + (victimRole == Role.DETECTIVE ? "Ein " + s().detective.name : "Ein Bogenträger")
                     + " ist gestorben! Der Bogen liegt jetzt auf der Map.");
         }
         Location deathLoc = victim.getLocation();
@@ -389,26 +411,30 @@ public class Game {
             Util.sound(p, 1f, "entity.player.hurt");
         }
 
-        if (id.equals(murderer)) {
-            if (killer != null && !killer.getUniqueId().equals(murderer)) {
+        if (victimRole == Role.MURDERER) {
+            if (killer != null && roles.get(killer.getUniqueId()) != Role.MURDERER) {
                 heroName = killer.getName();
             }
-            end(Winner.INNOCENTS);
-        } else {
-            checkWin();
+            if (countAlive(Role.MURDERER) > 0) {
+                broadcast(s().murderer.color + "Ein " + s().murderer.name + " wurde getötet!");
+            }
         }
+        checkWin();
+    }
+
+    /** Nur echte Kills zählen: Mörder tötet Nicht-Mörder oder Nicht-Mörder tötet Mörder (keine Teamkills). */
+    private boolean countsAsKill(UUID killer, UUID victim) {
+        return (roles.get(killer) == Role.MURDERER) != (roles.get(victim) == Role.MURDERER);
     }
 
     private void checkWin() {
         if (state != State.INGAME) return;
-        if (!alive.contains(murderer)) {
+        int murderers = countAlive(Role.MURDERER);
+        if (murderers == 0) {
             end(Winner.INNOCENTS);
-            return;
+        } else if (alive.size() - murderers == 0) {
+            end(Winner.MURDERER);
         }
-        for (UUID id : alive) {
-            if (!id.equals(murderer)) return;
-        }
-        end(Winner.MURDERER);
     }
 
     private void end(Winner winner) {
@@ -417,32 +443,46 @@ public class Game {
         endCountdown = 10;
         clearEntities();
 
+        String murdererList = String.join(", ", namesOf(Role.MURDERER));
+        String detectiveList = String.join(", ", namesOf(Role.DETECTIVE));
         String title;
-        String sub;
+        String sub = ChatColor.GRAY + s().murderer.name + ": " + s().murderer.color + murdererList;
         if (winner == Winner.INNOCENTS) {
             title = ChatColor.GREEN + "UNSCHULDIGE GEWINNEN!";
-            sub = ChatColor.GRAY + "Der Mörder war " + ChatColor.RED + murdererName;
         } else if (winner == Winner.MURDERER) {
-            title = ChatColor.RED + "DER MÖRDER GEWINNT!";
-            sub = ChatColor.GRAY + "Der Mörder war " + ChatColor.RED + murdererName;
+            title = s().murderer.color + s().murderer.name.toUpperCase() + " GEWINNT!";
         } else {
             title = ChatColor.GRAY + "RUNDE BEENDET";
             sub = "";
         }
+
+        // Statistiken
+        if (winner != Winner.NONE) {
+            for (Map.Entry<UUID, Role> e : roles.entrySet()) {
+                UUID id = e.getKey();
+                boolean murdererTeam = e.getValue() == Role.MURDERER;
+                boolean won = !left.contains(id) && (winner == Winner.MURDERER) == murdererTeam;
+                plugin.stats().addGame(id, names.get(id), won);
+            }
+        }
+        plugin.stats().save();
+
         String line = ChatColor.GREEN + "" + ChatColor.STRIKETHROUGH + "--------------------------------------";
         for (Player p : online(allMembers())) {
             Util.title(p, title, sub);
             p.sendMessage(line);
             p.sendMessage("         " + title);
             p.sendMessage("");
-            p.sendMessage(ChatColor.GRAY + "  Mörder: " + ChatColor.RED + murdererName);
-            p.sendMessage(ChatColor.GRAY + "  Detektiv: " + ChatColor.AQUA + detectiveName);
+            p.sendMessage(ChatColor.GRAY + "  " + s().murderer.name + ": " + s().murderer.color + murdererList);
+            if (!detectiveList.isEmpty()) {
+                p.sendMessage(ChatColor.GRAY + "  " + s().detective.name + ": " + s().detective.color + detectiveList);
+            }
             if (heroName != null) {
                 p.sendMessage(ChatColor.GRAY + "  Held: " + ChatColor.GOLD + heroName);
             }
             p.sendMessage(line);
-            boolean won = (winner == Winner.MURDERER) == p.getUniqueId().equals(murderer) && players.contains(p.getUniqueId());
-            if (winner != Winner.NONE && won) {
+            Role r = roles.get(p.getUniqueId());
+            if (winner != Winner.NONE && r != null && (winner == Winner.MURDERER) == (r == Role.MURDERER)) {
                 Util.sound(p, 1f, "entity.player.levelup");
             }
         }
@@ -456,10 +496,10 @@ public class Game {
         state = State.WAITING;
         alive.clear();
         roles.clear();
+        names.clear();
+        left.clear();
         gold.clear();
-        murderer = null;
-        detective = null;
-        bowHolder = null;
+        bowHolders.clear();
         List<Player> all = online(allMembers());
         players.clear();
         spectators.clear();
@@ -473,56 +513,65 @@ public class Game {
 
     public void onMelee(Player attacker, Player victim) {
         if (!isAlive(attacker) || !isAlive(victim)) return;
-        if (attacker.getUniqueId().equals(murderer) && isKnife(attacker.getInventory().getItemInMainHand())) {
-            kill(victim, attacker, "Du wurdest vom Mörder erstochen!");
+        if (roles.get(attacker.getUniqueId()) == Role.MURDERER && roles.get(victim.getUniqueId()) != Role.MURDERER
+                && isKnife(attacker.getInventory().getItemInMainHand())) {
+            kill(victim, attacker, "Du wurdest vom " + s().murderer.name + " erstochen!");
         }
     }
 
     public void onArrowHit(Player shooter, Player victim) {
         if (!isAlive(shooter) || !isAlive(victim) || shooter.equals(victim)) return;
-        if (shooter.getUniqueId().equals(murderer)) {
-            kill(victim, shooter, "Du wurdest vom Mörder erschossen!");
-        } else if (victim.getUniqueId().equals(murderer)) {
+        boolean shooterMurderer = roles.get(shooter.getUniqueId()) == Role.MURDERER;
+        boolean victimMurderer = roles.get(victim.getUniqueId()) == Role.MURDERER;
+        if (shooterMurderer) {
+            if (!victimMurderer) kill(victim, shooter, "Du wurdest vom " + s().murderer.name + " erschossen!");
+        } else if (victimMurderer) {
             kill(victim, shooter, ChatColor.YELLOW + shooter.getName() + " hat dich erschossen!");
         } else {
             kill(victim, shooter, "Du wurdest von einem Unschuldigen erschossen!");
-            kill(shooter, null, "Du hast einen Unschuldigen erschossen!");
+            if (s().teamKillKillsShooter) {
+                kill(shooter, null, "Du hast einen Unschuldigen erschossen!");
+            }
         }
     }
 
     public void onShoot(Player p) {
         UUID id = p.getUniqueId();
-        if (!isAlive(p) || !id.equals(bowHolder)) return;
-        int cd = plugin.getConfig().getInt("arrow-cooldown", 5);
+        if (!isAlive(p) || !bowHolders.contains(id)) return;
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (isAlive(p) && id.equals(bowHolder) && !p.getInventory().contains(Material.ARROW)) {
-                addArrow(p);
+            if (isAlive(p) && bowHolders.contains(id) && !p.getInventory().contains(Material.ARROW)) {
+                addArrows(p, 1);
             }
-        }, cd * 20L);
+        }, s().arrowCooldown * 20L);
+    }
+
+    public boolean isKnife(ItemStack it) {
+        return it != null && it.getType() == s().murderer.weapon;
     }
 
     public void throwKnife(Player p) {
         UUID id = p.getUniqueId();
-        if (!isAlive(p) || !id.equals(murderer)) return;
+        if (!s().knifeThrow || !isAlive(p) || roles.get(id) != Role.MURDERER) return;
         long now = System.currentTimeMillis();
         if (knifeReady.getOrDefault(id, 0L) > now) return;
-        int cd = plugin.getConfig().getInt("knife-cooldown", 5);
+        int cd = s().knifeCooldown;
         knifeReady.put(id, now + cd * 1000L);
 
         p.getInventory().setItem(SLOT_WEAPON, null);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (isAlive(p) && id.equals(murderer)) {
-                p.getInventory().setItem(SLOT_WEAPON, item(Material.IRON_SWORD, KNIFE_NAME));
+            if (isAlive(p) && roles.get(id) == Role.MURDERER) {
+                p.getInventory().setItem(SLOT_WEAPON, item(s().murderer.weapon, s().murderer.weaponName));
             }
-        }, cd * 20L);
+        }, Math.max(1, cd * 20L));
 
         Location start = p.getEyeLocation();
         Vector dir = start.getDirection().normalize();
+        int range = s().knifeRange;
         ArmorStand stand = start.getWorld().spawn(start.clone().subtract(0, 1.4, 0), ArmorStand.class);
         stand.setVisible(false);
         stand.setGravity(false);
         stand.setMarker(true);
-        stand.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_SWORD));
+        stand.getEquipment().setItemInMainHand(new ItemStack(s().murderer.weapon));
         stand.setRightArmPose(new EulerAngle(Math.toRadians(350), Math.toRadians(-90), Math.toRadians(0)));
         knives.add(stand);
         Util.sound(p, 1.5f, "entity.arrow.shoot");
@@ -534,7 +583,7 @@ public class Game {
 
             @Override
             public void run() {
-                if (state != State.INGAME || ++steps > 40) {
+                if (state != State.INGAME || ++steps > range) {
                     stop();
                     return;
                 }
@@ -547,10 +596,11 @@ public class Game {
                 standLoc.setYaw(start.getYaw());
                 stand.teleport(standLoc);
                 for (Player target : online(alive)) {
-                    if (target.equals(p) || !target.getWorld().equals(pos.getWorld())) continue;
+                    if (target.equals(p) || roles.get(target.getUniqueId()) == Role.MURDERER
+                            || !target.getWorld().equals(pos.getWorld())) continue;
                     Location body = target.getLocation().add(0, 1, 0);
                     if (body.distanceSquared(pos) < 1.3) {
-                        kill(target, p, "Du wurdest vom Messer des Mörders getroffen!");
+                        kill(target, p, "Du wurdest vom Messer des " + s().murderer.name + "s getroffen!");
                         stop();
                         return;
                     }
@@ -574,97 +624,102 @@ public class Game {
     }
 
     public void onGoldPickup(Player p, Item item) {
-        item.remove();
-        goldItems.values().remove(item);
         if (!isAlive(p)) return;
         UUID id = p.getUniqueId();
-        int g = gold.getOrDefault(id, 0) + 1;
+        if (!roleSettings(roles.get(id)).canCollectGold) return;
+        item.remove();
+        goldItems.values().remove(item);
+
+        int forBow = s().goldForBow;
+        int g = gold.getOrDefault(id, 0) + s().goldPerPickup;
         Util.sound(p, 1.5f, "entity.experience_orb.pickup");
-        if (g >= goldForBow()) {
-            g -= goldForBow();
+        while (g >= forBow) {
+            g -= forBow;
             PlayerInventory inv = p.getInventory();
-            if (!inv.contains(Material.BOW)) {
-                // Der Mörder behält Slot 1 für sein Messer (auch wenn es gerade geworfen wurde)
-                int slot = id.equals(murderer) ? SLOT_WEAPON + 1 : SLOT_WEAPON;
-                inv.setItem(slot, item(Material.BOW, BOW_NAME));
+            if (!inv.contains(Material.BOW) && !inv.contains(Material.CROSSBOW)) {
+                // Der Mörder behält Slot 1 für seine Waffe (auch wenn sie gerade geworfen wurde)
+                int slot = roles.get(id) == Role.MURDERER ? SLOT_WEAPON + 1 : SLOT_WEAPON;
+                inv.setItem(slot, item(Material.BOW, s().goldBowName));
                 p.sendMessage(Util.PREFIX + ChatColor.GOLD + "Du hast genug Gold gesammelt und einen Bogen erhalten!");
             } else {
-                p.sendMessage(Util.PREFIX + ChatColor.GOLD + "Du hast einen zusätzlichen Pfeil erhalten!");
+                p.sendMessage(Util.PREFIX + ChatColor.GOLD + "Du hast zusätzliche Pfeile erhalten!");
             }
-            addArrow(p);
+            addArrows(p, s().arrowsPerBow);
             Util.sound(p, 1f, "entity.player.levelup");
         }
         gold.put(id, g);
-        p.getInventory().setItem(SLOT_GOLD, g > 0 ? new ItemStack(Material.GOLD_INGOT, g) : null);
+        p.getInventory().setItem(SLOT_GOLD, g > 0 ? new ItemStack(s().goldMaterial, Math.min(g, 64)) : null);
     }
 
     private void spawnGold() {
         List<Location> spots = arena.getGoldSpawns();
         if (spots.isEmpty()) return;
         List<Integer> free = new ArrayList<>();
+        int onMap = 0;
         for (int i = 0; i < spots.size(); i++) {
             Item it = goldItems.get(i);
             if (it == null || it.isDead() || !it.isValid()) {
                 free.add(i);
+            } else {
+                onMap++;
             }
         }
-        if (free.isEmpty()) return;
-        int idx = free.get(random.nextInt(free.size()));
-        Location loc = Util.blockCenter(spots.get(idx)).add(0, 0.3, 0);
-        Item it = loc.getWorld().dropItem(loc, new ItemStack(Material.GOLD_INGOT));
-        it.setVelocity(new Vector(0, 0, 0));
-        it.setPickupDelay(0);
-        goldItems.put(idx, it);
+        int max = s().goldMaxOnMap > 0 ? s().goldMaxOnMap : spots.size();
+        Collections.shuffle(free);
+        for (int k = 0; k < s().goldSpawnsPerInterval && k < free.size() && onMap < max; k++, onMap++) {
+            int idx = free.get(k);
+            Location loc = Util.blockCenter(spots.get(idx)).add(0, 0.3, 0);
+            Item it = loc.getWorld().dropItem(loc, new ItemStack(s().goldMaterial));
+            it.setVelocity(new Vector(0, 0, 0));
+            it.setPickupDelay(0);
+            goldItems.put(idx, it);
+        }
     }
 
     private void dropBow(Location loc) {
-        if (droppedBow != null) droppedBow.remove();
         Location l = loc.getBlock().getLocation().add(0.5, 0, 0.5);
         ArmorStand stand = l.getWorld().spawn(l, ArmorStand.class);
         stand.setVisible(false);
         stand.setGravity(false);
         stand.setMarker(true);
-        stand.getEquipment().setItemInMainHand(new ItemStack(Material.BOW));
-        stand.customName(Util.text(DETECTIVE_BOW_NAME));
+        stand.getEquipment().setItemInMainHand(new ItemStack(s().detective.weapon));
+        stand.customName(Util.text(s().detective.weaponName));
         stand.setCustomNameVisible(true);
-        droppedBow = stand;
+        droppedBows.add(stand);
     }
 
-    private void addArrow(Player p) {
+    private void addArrows(Player p, int amount) {
         PlayerInventory inv = p.getInventory();
         ItemStack cur = inv.getItem(SLOT_ARROW);
         if (cur != null && cur.getType() == Material.ARROW) {
-            cur.setAmount(cur.getAmount() + 1);
+            cur.setAmount(Math.min(64, cur.getAmount() + amount));
             inv.setItem(SLOT_ARROW, cur);
         } else {
-            inv.setItem(SLOT_ARROW, new ItemStack(Material.ARROW));
+            inv.setItem(SLOT_ARROW, new ItemStack(Material.ARROW, amount));
         }
     }
 
     private void clearEntities() {
         for (BukkitTask t : new ArrayList<>(knifeTasks)) t.cancel();
         knifeTasks.clear();
-        for (ArmorStand s : knives) s.remove();
+        for (ArmorStand st : knives) st.remove();
         knives.clear();
         for (Item it : goldItems.values()) it.remove();
         goldItems.clear();
-        if (droppedBow != null) {
-            droppedBow.remove();
-            droppedBow = null;
-        }
+        for (ArmorStand st : droppedBows) st.remove();
+        droppedBows.clear();
     }
 
     // ------------------------------------------------------------------ Scoreboard
 
     private void updateBoards() {
-        String server = Util.color(plugin.getConfig().getString("server-name", "&edein-server.de"));
         for (Map.Entry<UUID, Board> e : boards.entrySet()) {
             Player p = Bukkit.getPlayer(e.getKey());
             if (p == null) continue;
             List<String> lines = new ArrayList<>();
             lines.add("");
             if (state == State.WAITING || state == State.STARTING) {
-                lines.add(ChatColor.WHITE + "Spieler: " + ChatColor.GREEN + players.size() + "/" + maxPlayers());
+                lines.add(ChatColor.WHITE + "Spieler: " + ChatColor.GREEN + players.size() + "/" + s().maxPlayers);
                 lines.add("");
                 lines.add(state == State.STARTING
                         ? ChatColor.WHITE + "Start in: " + ChatColor.GREEN + Math.max(countdown, 0) + "s"
@@ -673,19 +728,25 @@ public class Game {
                 UUID id = e.getKey();
                 lines.add(ChatColor.WHITE + "Rolle: " + roleDisplay(id));
                 lines.add("");
-                int innocents = 0;
-                for (UUID a : alive) if (!a.equals(murderer)) innocents++;
-                lines.add(ChatColor.WHITE + "Unschuldige übrig: " + ChatColor.GREEN + innocents);
+                int murderersAlive = countAlive(Role.MURDERER);
+                lines.add(ChatColor.WHITE + "Unschuldige übrig: " + ChatColor.GREEN + (alive.size() - murderersAlive));
+                if (count(Role.MURDERER) > 1) {
+                    lines.add(ChatColor.WHITE + s().murderer.name + " übrig: " + s().murderer.color + murderersAlive);
+                }
                 lines.add(ChatColor.WHITE + "Zeit übrig: " + ChatColor.GREEN + Util.formatTime(Math.max(timeLeft, 0)));
-                lines.add("");
-                String det;
-                if (alive.contains(detective)) det = ChatColor.GREEN + "Lebt";
-                else if (droppedBow != null) det = ChatColor.RED + "Bogen liegt!";
-                else det = ChatColor.RED + "Tot";
-                lines.add(ChatColor.WHITE + "Detektiv: " + det);
-                if (alive.contains(id)) {
+                int detTotal = count(Role.DETECTIVE);
+                if (detTotal > 0) {
+                    int detAlive = countAlive(Role.DETECTIVE);
+                    String det;
+                    if (detAlive > 0) det = ChatColor.GREEN + (detTotal > 1 ? detAlive + "/" + detTotal + " leben" : "Lebt");
+                    else if (!droppedBows.isEmpty()) det = ChatColor.RED + "Bogen liegt!";
+                    else det = ChatColor.RED + "Tot";
                     lines.add("");
-                    lines.add(ChatColor.WHITE + "Gold: " + ChatColor.GOLD + gold.getOrDefault(id, 0) + "/" + goldForBow());
+                    lines.add(ChatColor.WHITE + s().detective.name + ": " + det);
+                }
+                if (alive.contains(id) && s().goldEnabled) {
+                    lines.add("");
+                    lines.add(ChatColor.WHITE + "Gold: " + ChatColor.GOLD + gold.getOrDefault(id, 0) + "/" + s().goldForBow);
                 }
                 if (state == State.INGAME && graceLeft > 0) {
                     lines.add("");
@@ -693,7 +754,7 @@ public class Game {
                 }
             }
             lines.add("");
-            lines.add(server);
+            lines.add(s().serverName);
             e.getValue().setLines(lines);
         }
     }
@@ -702,11 +763,7 @@ public class Game {
         Role r = roles.get(id);
         if (r == null) return ChatColor.GRAY + "Zuschauer";
         if (!alive.contains(id) && state == State.INGAME) return ChatColor.GRAY + "Tot";
-        switch (r) {
-            case MURDERER: return ChatColor.RED + "Mörder";
-            case DETECTIVE: return ChatColor.AQUA + "Detektiv";
-            default: return ChatColor.GREEN + "Unschuldig";
-        }
+        return roleSettings(r).coloredName();
     }
 
     // ------------------------------------------------------------------ Helfer
@@ -720,31 +777,43 @@ public class Game {
     }
 
     public Location respawnPoint() {
-        if (state == State.INGAME && !arena.getSpawns().isEmpty()) {
-            return arena.getSpawns().get(random.nextInt(arena.getSpawns().size()));
+        List<Location> spawns = arena.getSpawns();
+        if (state == State.INGAME && !spawns.isEmpty()) {
+            return spawns.get(random.nextInt(spawns.size()));
         }
         return arena.getLobby();
     }
 
-    private boolean isKnife(ItemStack it) {
-        return it != null && it.getType() == Material.IRON_SWORD;
+    private Settings.RoleSettings roleSettings(Role r) {
+        return switch (r) {
+            case MURDERER -> s().murderer;
+            case DETECTIVE -> s().detective;
+            case INNOCENT -> s().innocent;
+        };
     }
 
-    private int minPlayers() {
-        return Math.max(2, plugin.getConfig().getInt("min-players", 4));
+    private int count(Role role) {
+        int c = 0;
+        for (Role r : roles.values()) if (r == role) c++;
+        return c;
     }
 
-    private int maxPlayers() {
-        return plugin.getConfig().getInt("max-players", 16);
+    private int countAlive(Role role) {
+        int c = 0;
+        for (UUID id : alive) if (roles.get(id) == role) c++;
+        return c;
     }
 
-    private int goldForBow() {
-        return Math.max(1, plugin.getConfig().getInt("gold-for-bow", 10));
+    private List<String> namesOf(Role role) {
+        List<String> list = new ArrayList<>();
+        for (Map.Entry<UUID, Role> e : roles.entrySet()) {
+            if (e.getValue() == role) list.add(names.get(e.getKey()));
+        }
+        return list;
     }
 
     private Set<UUID> allMembers() {
-        Set<UUID> all = ConcurrentHashMap.newKeySet();
-        all.addAll(players);
+        Set<UUID> all = new HashSet<>(players);
         all.addAll(spectators);
         return all;
     }
@@ -758,7 +827,7 @@ public class Game {
         return list;
     }
 
-    private List<String> names(Set<UUID> ids) {
+    private List<String> playerNames(Set<UUID> ids) {
         List<String> list = new ArrayList<>();
         for (Player p : online(ids)) list.add(p.getName());
         return list;
@@ -773,8 +842,10 @@ public class Game {
     private static ItemStack item(Material m, String name) {
         ItemStack it = new ItemStack(m);
         ItemMeta meta = it.getItemMeta();
-        meta.displayName(Util.itemName(name));
-        it.setItemMeta(meta);
+        if (meta != null && !name.isEmpty()) {
+            meta.displayName(Util.itemName(name));
+            it.setItemMeta(meta);
+        }
         return it;
     }
 

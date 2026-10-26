@@ -5,7 +5,6 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
-import org.bukkit.Material;
 import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -22,6 +21,7 @@ import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -48,7 +48,7 @@ public class GameListener implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
-        if (plugin.getConfig().getBoolean("auto-join", true)) {
+        if (plugin.settings().autoJoin) {
             Player p = e.getPlayer();
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (p.isOnline()) game.join(p);
@@ -108,7 +108,7 @@ public class GameListener implements Listener {
         }
         if (e.getHand() != EquipmentSlot.HAND) return; // Event kommt sonst für Haupt- und Nebenhand doppelt
         if ((e.getAction() == Action.RIGHT_CLICK_AIR || e.getAction() == Action.RIGHT_CLICK_BLOCK)
-                && e.getItem() != null && e.getItem().getType() == Material.IRON_SWORD) {
+                && game.isKnife(e.getItem())) {
             e.setCancelled(true);
             game.throwKnife(p);
         }
@@ -126,9 +126,12 @@ public class GameListener implements Listener {
     @EventHandler
     public void onMove(PlayerMoveEvent e) {
         Player p = e.getPlayer();
-        if (e.getTo().getY() < p.getWorld().getMinHeight() && game.isInArena(p) && p.getGameMode() != GameMode.SPECTATOR) {
+        if (!game.isInArena(p) || !e.hasChangedBlock()) return;
+        if (e.getTo().getY() < p.getWorld().getMinHeight() && p.getGameMode() != GameMode.SPECTATOR) {
             p.teleport(game.respawnPoint());
+            return;
         }
+        game.checkLobbyBounds(p);
     }
 
     @EventHandler
@@ -172,7 +175,15 @@ public class GameListener implements Listener {
 
     @EventHandler
     public void onInventory(InventoryClickEvent e) {
-        if (e.getWhoClicked() instanceof Player p && protectedPlayer(p)) e.setCancelled(true);
+        if (e.getView().getTopInventory().getHolder() instanceof StatsMenu
+                || (e.getWhoClicked() instanceof Player p && protectedPlayer(p))) {
+            e.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent e) {
+        if (e.getView().getTopInventory().getHolder() instanceof StatsMenu) e.setCancelled(true);
     }
 
     @EventHandler
