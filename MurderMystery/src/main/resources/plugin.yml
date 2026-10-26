@@ -1,0 +1,15 @@
+name: MurderMystery
+version: ${project.version}
+main: de.murdermystery.MurderMysteryPlugin
+api-version: '1.21'
+description: Murder Mystery Spielmodus (Mörder, Detektiv, Unschuldige)
+author: Chaosmax109
+commands:
+  mm:
+    description: Murder Mystery Befehle
+    usage: /mm help
+    aliases: [murdermystery, murder]
+permissions:
+  mm.admin:
+    description: Arena einrichten und Spiele steuern
+    default: op

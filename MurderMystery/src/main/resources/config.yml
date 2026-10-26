@@ -1,0 +1,35 @@
+# ===============================
+#   Murder Mystery – Einstellungen
+# ===============================
+
+# Spieler treten beim Betreten des Servers automatisch der Lobby bei.
+auto-join: true
+
+# Mindestens so viele Spieler, damit der Countdown startet.
+min-players: 4
+# Maximale Spieleranzahl pro Runde (weitere Spieler schauen zu).
+max-players: 16
+
+# Lobby-Countdown in Sekunden (wird auf 10 verkürzt, wenn die Runde voll ist).
+lobby-countdown: 30
+# Sekunden nach Rundenstart, bevor Mörder/Detektiv ihre Waffen bekommen.
+grace-period: 10
+# Rundendauer in Sekunden. Läuft die Zeit ab, gewinnen die Unschuldigen.
+game-duration: 270
+# Sekunden, bis der Detektiv einen neuen Pfeil bekommt.
+arrow-cooldown: 5
+# Abklingzeit des Messerwurfs (Rechtsklick mit dem Schwert) in Sekunden.
+knife-cooldown: 5
+# Alle wie viele Sekunden Gold an den Gold-Spawns erscheint.
+gold-interval: 8
+# Wie viel Gold man für einen Bogen + Pfeil braucht.
+gold-for-bow: 10
+
+# Text in der letzten Zeile des Scoreboards.
+server-name: "&edein-server.de"
+
+# Wird per Befehl gesetzt (/mm setlobby, /mm addspawn, /mm addgold).
+arena:
+  lobby: ""
+  spawns: []
+  gold: []
