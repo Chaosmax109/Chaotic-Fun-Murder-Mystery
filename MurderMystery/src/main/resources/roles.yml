@@ -6,6 +6,8 @@
 
 # Erschießt/ersticht ein Unschuldiger einen anderen Unschuldigen, stirbt er ebenfalls.
 team-kill-kills-shooter: true
+# Stirbt ein Unschuldiger, wenn er einen Neutralen tötet?
+neutral-kill-kills-shooter: false
 
 # Zeigt wartenden Spielern im Scoreboard, mit welcher Wahrscheinlichkeit sie welche Rolle bekommen.
 # Pro Rolle lässt sich die Anzeige zusätzlich mit "show-chance: false" ausblenden.
@@ -21,7 +23,10 @@ show-chances: true
 # Es muss mindestens eine Rolle mit "team: MURDERER" geben.
 #
 # Mögliche Einstellungen pro Rolle:
-#   team:              MURDERER (gewinnt, wenn alle anderen tot sind) oder INNOCENT
+#   team:              MURDERER – gewinnt, wenn kein Unschuldiger mehr lebt
+#                      INNOCENT – gewinnt, wenn kein Mörder mehr lebt oder die Zeit abläuft
+#                      NEUTRAL  – spielt für sich: gewinnt, wenn er das Rundenende überlebt (egal wer sonst gewinnt).
+#                                 Kann von allen getötet werden und (mit Waffe) jeden töten.
 #   amount:            wie viele Spieler die Rolle bekommen
 #   extra-per-players: pro so vielen Spielern einer mehr (z. B. 10 → ab 10 Spielern +1). 0 = aus
 #   chance:            Wahrscheinlichkeit in Prozent, dass die Rolle in einer Runde vergeben wird (100 = immer)
@@ -36,6 +41,8 @@ show-chances: true
 #   can-pickup-bow:    darf den Bogen eines toten Bogenträgers aufheben
 #   effects:           Trankeffekte für die ganze Runde, z. B. ["SPEED:1", "JUMP_BOOST:2"]
 #   icon:              Item im Stats-Menü (Standard: die Waffe)
+#
+# Was eine Rolle für Gold bekommt, steht in gold-rewards.yml.
 
 roles:
   murderer:
@@ -113,3 +120,23 @@ roles:
     can-pickup-bow: true
     effects: ["SPEED:1"]
     icon: FEATHER
+
+  # Beispiel für eine neutrale Rolle: gewinnt, wenn er das Rundenende überlebt – egal welches Team gewinnt.
+  # chance: 0 = ausgeschaltet.
+  survivor:
+    team: NEUTRAL
+    amount: 1
+    extra-per-players: 0
+    chance: 0
+    show-chance: true
+    name: "Überlebender"
+    color: "&7"
+    title: "&7ÜBERLEBENDER"
+    subtitle: "&7Überlebe bis zum Schluss!"
+    message: "Du bist der &7Überlebende&7 (neutral)! Du gewinnst, wenn du am Ende der Runde noch lebst – egal wer sonst gewinnt."
+    weapon:
+      type: NONE
+    can-collect-gold: true
+    can-pickup-bow: false
+    effects: []
+    icon: TOTEM_OF_UNDYING

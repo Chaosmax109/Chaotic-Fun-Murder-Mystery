@@ -10,14 +10,20 @@ import org.bukkit.potion.PotionEffectType;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.logging.Logger;
 
 /** Alle Werte aus config.yml, roles.yml und gold.yml, einmal beim Start bzw. bei /mm reload eingelesen. */
 public class Settings {
 
-    public enum Team { MURDERER, INNOCENT }
+    /**
+     * MURDERER gewinnt, wenn kein INNOCENT mehr lebt; INNOCENT gewinnt, wenn kein MURDERER mehr lebt
+     * oder die Zeit abläuft. NEUTRAL spielt für sich: gewinnt, wenn er das Rundenende überlebt.
+     */
+    public enum Team { MURDERER, INNOCENT, NEUTRAL }
 
     public enum WeaponType { KNIFE, BOW, NONE }
 
@@ -98,6 +104,34 @@ public class Settings {
         }
     }
 
+    /** Ein Item aus einem Gold-Paket (gold-rewards.yml). */
+    public record RewardItem(Material material, int amount, String name, boolean once) {
+    }
+
+    /** Was eine Rolle für {@code cost} Gold bekommt (gold-rewards.yml). */
+    public record GoldReward(boolean enabled, int cost, String message, List<RewardItem> items, List<PotionEffect> effects) {
+
+        static GoldReward parse(ConfigurationSection c, Logger log) {
+            String path = "gold-rewards.yml: " + c.getName();
+            List<RewardItem> items = new ArrayList<>();
+            for (Map<?, ?> m : c.getMapList("items")) {
+                Object mat = m.get("material");
+                Material material = material(mat == null ? null : mat.toString(), null, log, path + ".items");
+                if (material == null) continue;
+                Object amount = m.get("amount");
+                Object name = m.get("name");
+                Object once = m.get("once");
+                items.add(new RewardItem(material,
+                        amount instanceof Number n ? Math.max(1, n.intValue()) : 1,
+                        name == null ? "" : Util.color(name.toString()),
+                        once instanceof Boolean b && b));
+            }
+            return new GoldReward(c.getBoolean("enabled", true), Math.max(1, c.getInt("cost", 10)),
+                    Util.color(c.getString("message", "")), Collections.unmodifiableList(items),
+                    parseEffects(c.getStringList("effects"), log, path));
+        }
+    }
+
     public final boolean autoJoin;
     public final int minPlayers;
     public final int maxPlayers;
@@ -108,6 +142,7 @@ public class Settings {
     public final int lobbyMaxDistance;
 
     public final boolean teamKillKillsShooter;
+    public final boolean neutralKillKillsShooter;
     public final boolean showChances;
     /** Alle Rollen außer "innocent", in der Reihenfolge aus roles.yml. */
     public final List<Role> specialRoles;
@@ -120,16 +155,16 @@ public class Settings {
     public final int goldSpawnsPerInterval;
     public final int goldMaxOnMap;
     public final int goldPerPickup;
-    public final int goldForBow;
-    public final int arrowsPerBow;
-    public final String goldBowName;
+    /** Gold-Pakete pro Rollen-Schlüssel; "default" gilt für Rollen ohne eigenen Eintrag. */
+    private final Map<String, GoldReward> goldRewards = new HashMap<>();
 
     /**
-     * @param c     config.yml (allgemeine Einstellungen)
-     * @param roles roles.yml
-     * @param gold  gold.yml
+     * @param c       config.yml (allgemeine Einstellungen)
+     * @param roles   roles.yml
+     * @param gold    gold.yml
+     * @param rewards gold-rewards.yml
      */
-    public Settings(FileConfiguration c, FileConfiguration roles, FileConfiguration gold, Logger log) {
+    public Settings(FileConfiguration c, FileConfiguration roles, FileConfiguration gold, FileConfiguration rewards, Logger log) {
         autoJoin = c.getBoolean("auto-join", true);
         minPlayers = Math.max(2, c.getInt("min-players", 4));
         maxPlayers = Math.max(minPlayers, c.getInt("max-players", 16));
@@ -140,6 +175,7 @@ public class Settings {
         lobbyMaxDistance = Math.max(0, c.getInt("lobby.max-distance", 40));
 
         teamKillKillsShooter = roles.getBoolean("team-kill-kills-shooter", true);
+        neutralKillKillsShooter = roles.getBoolean("neutral-kill-kills-shooter", false);
         showChances = roles.getBoolean("show-chances", true);
         List<Role> special = new ArrayList<>();
         Role filler = null;
@@ -157,7 +193,7 @@ public class Settings {
             log.warning("roles.yml: Rolle 'innocent' fehlt – nutze Standardwerte.");
             filler = new Role("innocent", roles.createSection("roles.innocent"), log);
         }
-        if (filler.isMurderer()) {
+        if (filler.team != Team.INNOCENT) {
             log.warning("roles.yml: 'innocent' muss im Team INNOCENT sein.");
         }
         if (special.stream().noneMatch(Role::isMurderer)) {
@@ -173,9 +209,20 @@ public class Settings {
         goldSpawnsPerInterval = Math.max(1, gold.getInt("spawns-per-interval", 1));
         goldMaxOnMap = Math.max(0, gold.getInt("max-on-map", 0));
         goldPerPickup = Math.max(1, gold.getInt("amount-per-pickup", 1));
-        goldForBow = Math.max(1, gold.getInt("for-bow", 10));
-        arrowsPerBow = Math.max(1, gold.getInt("arrows-per-bow", 1));
-        goldBowName = Util.color(gold.getString("bow-name", "&eBogen"));
+
+        for (String key : rewards.getKeys(false)) {
+            ConfigurationSection rs = rewards.getConfigurationSection(key);
+            if (rs != null) goldRewards.put(key.toLowerCase(Locale.ROOT), GoldReward.parse(rs, log));
+        }
+        if (!goldRewards.containsKey("default")) {
+            log.warning("gold-rewards.yml: Abschnitt 'default' fehlt – Gold bringt Rollen ohne eigenen Eintrag nichts.");
+            goldRewards.put("default", new GoldReward(false, 10, "", List.of(), List.of()));
+        }
+    }
+
+    /** Das Gold-Paket einer Rolle (oder "default"). */
+    public GoldReward goldReward(Role role) {
+        return goldRewards.getOrDefault(role.key, goldRewards.get("default"));
     }
 
     /** Alle Rollen inklusive "innocent". */
@@ -202,7 +249,7 @@ public class Settings {
      * Bringt ältere Einstellungen ins aktuelle Format:
      * Rollen/Gold aus der config.yml nach roles.yml/gold.yml und Rollen in roles.yml unter "roles:".
      */
-    public static boolean migrate(FileConfiguration c, FileConfiguration roles, FileConfiguration gold) {
+    public static boolean migrate(FileConfiguration c, FileConfiguration roles, FileConfiguration gold, FileConfiguration rewards) {
         boolean changed = moveSection(c, "roles", roles, "") | moveSection(c, "gold", gold, "");
         changed |= moveKey(c, "gold-interval", gold, "interval");
         changed |= moveKey(c, "gold-for-bow", gold, "for-bow");
@@ -214,6 +261,17 @@ public class Settings {
         }
         if (!roles.isSet("show-chances")) {
             roles.set("show-chances", true);
+            changed = true;
+        }
+        // Version 2.1: Bogen-Preis stand in gold.yml – jetzt das "default"-Paket in gold-rewards.yml
+        if (gold.isSet("for-bow") || gold.isSet("arrows-per-bow") || gold.isSet("bow-name")) {
+            rewards.set("default.cost", gold.getInt("for-bow", 10));
+            rewards.set("default.items", List.of(
+                    Map.of("material", "BOW", "name", gold.getString("bow-name", "&eBogen"), "once", true),
+                    Map.of("material", "ARROW", "amount", gold.getInt("arrows-per-bow", 1))));
+            gold.set("for-bow", null);
+            gold.set("arrows-per-bow", null);
+            gold.set("bow-name", null);
             changed = true;
         }
         return changed;
@@ -249,16 +307,21 @@ public class Settings {
                 log.warning("roles.yml: unbekannter Effekt '" + parts[0] + "' bei " + role);
                 continue;
             }
-            int level = 1;
-            if (parts.length > 1) {
-                try {
-                    level = Math.max(1, Integer.parseInt(parts[1].trim()));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            effects.add(new PotionEffect(type, PotionEffect.INFINITE_DURATION, level - 1, false, false, true));
+            // Format: EFFEKT[:Stufe[:Sekunden]] – ohne Sekunden hält der Effekt die ganze Runde
+            int level = parts.length > 1 ? parseInt(parts[1], 1) : 1;
+            int seconds = parts.length > 2 ? parseInt(parts[2], 0) : 0;
+            int duration = seconds > 0 ? seconds * 20 : PotionEffect.INFINITE_DURATION;
+            effects.add(new PotionEffect(type, duration, Math.max(1, level) - 1, false, false, true));
         }
         return Collections.unmodifiableList(effects);
+    }
+
+    private static int parseInt(String s, int fallback) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     private static <E extends Enum<E>> E parseEnum(Class<E> type, String value, E fallback, Logger log, String path) {
@@ -272,7 +335,10 @@ public class Settings {
     }
 
     private static Material material(String name, Material fallback, Logger log, String path) {
-        if (name == null || name.isEmpty()) return fallback;
+        if (name == null || name.isEmpty()) {
+            if (fallback == null) log.warning(path + ": 'material' fehlt");
+            return fallback;
+        }
         Material m = Material.matchMaterial(name);
         if (m == null || !m.isItem()) {
             log.warning("Unbekanntes Item '" + name + "' bei " + path + " – nutze " + fallback);

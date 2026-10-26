@@ -1,0 +1,48 @@
+# ===============================
+#   Murder Mystery – Gold-Belohnungen
+# ===============================
+# Was Spieler für gesammeltes Gold bekommen – für jede Rolle einzeln.
+# Der Abschnitt-Name ist der Rollen-Schlüssel aus roles.yml (z. B. murderer, detective, innocent, runner).
+# Rollen ohne eigenen Abschnitt bekommen das Paket "default".
+# Nach Änderungen: /mm reload
+#
+# Pro Rolle:
+#   enabled:  false = Gold bringt dieser Rolle nichts (sammeln darf sie trotzdem, siehe can-collect-gold in roles.yml)
+#   cost:     so viel Gold kostet ein Paket. Danach beginnt der Zähler von vorn – das Paket gibt es also immer wieder.
+#   message:  Nachricht beim Einlösen (leer = keine)
+#   items:    Items im Paket
+#     - material: Item, z. B. BOW, CROSSBOW, ARROW, ENDER_PEARL, SNOWBALL
+#       amount:   Anzahl (Standard 1)
+#       name:     Anzeigename (optional)
+#       once:     true = nur geben, wenn der Spieler das Item noch nicht hat (z. B. für den Bogen)
+#   effects:  Trankeffekte als EFFEKT:Stufe:Sekunden, z. B. ["SPEED:2:10"] = 10 Sekunden Speed II
+
+default:
+  enabled: true
+  cost: 10
+  message: "&6Du hast dein Gold eingelöst!"
+  items:
+    - material: BOW
+      name: "&eBogen"
+      once: true
+    - material: ARROW
+      amount: 1
+  effects: []
+
+# Der Detektiv hat schon einen Bogen – er bekommt für Gold kurz Speed.
+detective:
+  enabled: true
+  cost: 10
+  message: "&bDu bist für 10 Sekunden schneller!"
+  items: []
+  effects: ["SPEED:2:10"]
+
+# Beispiel für die Beispielrolle "runner" aus roles.yml: Enderperle statt Bogen
+runner:
+  enabled: true
+  cost: 8
+  message: "&eDu hast eine Enderperle bekommen!"
+  items:
+    - material: ENDER_PEARL
+      amount: 1
+  effects: []

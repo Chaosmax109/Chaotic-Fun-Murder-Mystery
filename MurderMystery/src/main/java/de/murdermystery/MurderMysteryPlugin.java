@@ -63,22 +63,25 @@ public class MurderMysteryPlugin extends JavaPlugin {
         reloadConfig();
         File rolesFile = file("roles.yml");
         File goldFile = file("gold.yml");
+        File rewardsFile = file("gold-rewards.yml");
         File dbFile = file("database.yml");
-        // roles.yml ohne Standardwerte laden: sonst kämen gelöschte Beispielrollen bei jedem Reload zurück
+        // roles.yml und gold-rewards.yml ohne Standardwerte laden: sonst kämen gelöschte Beispielrollen bei jedem Reload zurück
         YamlConfiguration roles = YamlConfiguration.loadConfiguration(rolesFile);
+        YamlConfiguration rewards = YamlConfiguration.loadConfiguration(rewardsFile);
         YamlConfiguration gold = loadWithDefaults(goldFile, true);
         YamlConfiguration db = loadWithDefaults(dbFile, true);
 
-        if (Settings.migrate(getConfig(), roles, gold)) {
-            getLogger().info("Einstellungen wurden ins aktuelle Format umgestellt (roles.yml / gold.yml).");
+        if (Settings.migrate(getConfig(), roles, gold, rewards)) {
+            getLogger().info("Einstellungen wurden ins aktuelle Format umgestellt (roles.yml / gold.yml / gold-rewards.yml).");
         }
         // Neue Einstellungen aus Updates in die vorhandenen Dateien übernehmen
         getConfig().options().copyDefaults(true);
         saveConfig();
         save(roles, rolesFile);
+        save(rewards, rewardsFile);
         save(gold, goldFile);
         save(db, dbFile);
-        settings = new Settings(getConfig(), roles, gold, getLogger());
+        settings = new Settings(getConfig(), roles, gold, rewards, getLogger());
         stats.connect(db);
     }
 
@@ -186,7 +189,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
             case "reload" -> {
                 loadSettings();
                 arena.load();
-                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "config.yml, roles.yml, gold.yml und database.yml neu geladen. Stats: "
+                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Alle Config-Dateien neu geladen. Stats: "
                         + (stats.isEnabled() ? ChatColor.GREEN + "aktiv" : ChatColor.RED + "deaktiviert"));
             }
             case "info" -> {

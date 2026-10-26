@@ -15,8 +15,5 @@ spawns-per-interval: 1
 max-on-map: 0
 # Wie viel Gold ein aufgesammeltes Item zählt
 amount-per-pickup: 1
-# Wie viel Gold man für einen Bogen braucht
-for-bow: 10
-# Pfeile, die man pro eingelöstem Gold-Paket bekommt
-arrows-per-bow: 1
-bow-name: "&eBogen"
+
+# Was man für das gesammelte Gold bekommt, steht pro Rolle in gold-rewards.yml.

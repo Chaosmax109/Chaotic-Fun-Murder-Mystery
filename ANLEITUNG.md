@@ -61,7 +61,7 @@ Tipp: OPs im **Kreativmodus** sind vom Block-/Inventarschutz ausgenommen – zum
 - Nach 10 Sekunden bekommen Mörder (Messer) und Detektiv (Bogen) ihre Waffen.
 - **Mörder:** Linksklick = erstechen, Rechtsklick = Messer werfen (5 s Abklingzeit).
 - **Detektiv:** Bogen, nach jedem Schuss kommt nach 5 s ein neuer Pfeil.
-- **Gold:** erscheint an den Gold-Spawns. 10 Gold = Bogen + 1 Pfeil (jede weiteren 10 Gold = 1 Pfeil).
+- **Gold:** erscheint an den Gold-Spawns. Standardmäßig gibt es für 10 Gold Bogen + 1 Pfeil (jede weiteren 10 Gold = 1 Pfeil). Pro Rolle einstellbar in `gold-rewards.yml`.
 - Stirbt der Detektiv, fällt sein Bogen auf den Boden – jeder Unschuldige kann ihn aufheben (nicht der Mörder).
 - Erschießt ein Unschuldiger einen anderen Unschuldigen, sterben **beide**.
 - **Sieg Unschuldige:** Mörder tot oder Zeit (4:30) abgelaufen. **Sieg Mörder:** alle anderen tot.
@@ -70,20 +70,31 @@ Tipp: OPs im **Kreativmodus** sind vom Block-/Inventarschutz ausgenommen – zum
 
 ## 6. Einstellungen
 
-Im Ordner `plugins/MurderMystery/` liegen vier Dateien:
+Im Ordner `plugins/MurderMystery/` liegen fünf Dateien:
 
 | Datei | Inhalt |
 |---|---|
 | `config.yml` | Allgemeines: Auto-Join, Spielerzahlen, Zeiten, Lobby, Arena-Punkte |
-| `roles.yml` | Alle Rollen (auch eigene) und die Anzeige der Wahrscheinlichkeiten |
-| `gold.yml` | Alles zum Gold |
+| `roles.yml` | Alle Rollen (auch eigene), Teams und die Anzeige der Wahrscheinlichkeiten |
+| `gold.yml` | Wie und wo Gold erscheint |
+| `gold-rewards.yml` | Was jede Rolle für ihr Gold bekommt |
 | `database.yml` | Datenbank-Verbindung für die Statistiken |
 
 Nach Änderungen `/mm reload` ausführen, das lädt alle Dateien neu und verbindet die Datenbank neu. Jede Einstellung ist in den Dateien kommentiert.
 
 ### Rollen (`roles.yml`)
 
-Alle Rollen stehen unter `roles:`. Eingebaut sind `murderer` (Mörder), `detective` (Detektiv) und `innocent` (Unschuldig). Dazu kommt die Beispielrolle `runner` (Läufer), die mit `chance: 0` ausgeschaltet ist.
+Alle Rollen stehen unter `roles:`. Eingebaut sind `murderer` (Mörder), `detective` (Detektiv) und `innocent` (Unschuldig). Dazu kommen zwei Beispielrollen, die mit `chance: 0` ausgeschaltet sind: `runner` (Läufer, unschuldig mit Speed) und `survivor` (Überlebender, neutral).
+
+**Die drei Teams:**
+
+| Team | Gewinnt, wenn … |
+|---|---|
+| `MURDERER` | kein Spieler aus dem Team `INNOCENT` mehr lebt |
+| `INNOCENT` | kein Spieler aus dem Team `MURDERER` mehr lebt oder die Zeit abläuft |
+| `NEUTRAL` | er am Ende der Runde noch lebt, egal welches Team gewinnt. Neutrale müssen nicht getötet werden, damit die Mörder gewinnen. |
+
+Neutrale können von allen getötet werden und mit einer Waffe selbst jeden töten. Tötet ein Unschuldiger einen Neutralen, passiert ihm nichts, außer `neutral-kill-kills-shooter: true` ist gesetzt. Kills an Neutralen und von Neutralen zählen in den Stats.
 
 - `innocent` ist Pflicht: Diese Rolle bekommen alle, die keine andere Rolle erhalten.
 - Es muss mindestens eine Rolle mit `team: MURDERER` geben.
@@ -117,7 +128,7 @@ Was jede Rolle einstellen kann:
 
 | Einstellung | Bedeutung |
 |---|---|
-| `team` | `MURDERER` (gewinnt, wenn alle anderen tot sind) oder `INNOCENT` |
+| `team` | `MURDERER`, `INNOCENT` oder `NEUTRAL` (siehe oben) |
 | `amount`, `extra-per-players` | Wie viele Spieler die Rolle bekommen. Beispiel: `amount: 1`, `extra-per-players: 8` bedeutet ab 8 Spielern 2, ab 16 Spielern 3 |
 | `chance` | Wahrscheinlichkeit in Prozent, dass die Rolle in einer Runde vergeben wird (`100` = immer, `0` = nie) |
 | `show-chance` | Wahrscheinlichkeit dieser Rolle in der Lobby anzeigen |
@@ -140,7 +151,39 @@ Die Rollen werden in der Reihenfolge aus der Datei vergeben. Mehrere Spieler im 
 - `enabled`, `material` (z. B. `GOLD_INGOT`, `GOLD_NUGGET`, `EMERALD`)
 - `interval`: alle wie viele Sekunden Gold erscheint. `spawns-per-interval`: an wie vielen Punkten gleichzeitig.
 - `max-on-map`: höchstens so viele Gold-Items gleichzeitig (0 = so viele wie Gold-Spawns)
-- `amount-per-pickup`, `for-bow`, `arrows-per-bow`, `bow-name`
+- `amount-per-pickup`: wie viel Gold ein aufgesammeltes Item zählt
+
+### Gold-Belohnungen (`gold-rewards.yml`)
+
+Hier steht für jede Rolle, was sie für ihr Gold bekommt. Der Abschnitt-Name ist der Rollen-Schlüssel aus der `roles.yml`. Rollen ohne eigenen Abschnitt bekommen das Paket `default`.
+
+```yaml
+default:              # alle Rollen ohne eigenen Eintrag
+  enabled: true
+  cost: 10            # 10 Gold = 1 Paket, danach beginnt der Zähler von vorn
+  message: "&6Du hast dein Gold eingelöst!"
+  items:
+    - material: BOW
+      name: "&eBogen"
+      once: true      # nur, wenn der Spieler noch keinen Bogen hat
+    - material: ARROW
+      amount: 1
+  effects: []
+
+murderer:             # eigenes Paket nur für den Mörder
+  enabled: true
+  cost: 15
+  message: "&cDu hast eine Enderperle bekommen!"
+  items:
+    - material: ENDER_PEARL
+  effects: ["SPEED:1:5"]   # 5 Sekunden Speed I
+```
+
+- `enabled: false`: Gold bringt dieser Rolle nichts. Ob sie überhaupt Gold sammeln darf, regelt `can-collect-gold` in der `roles.yml`.
+- `items`: `material`, `amount`, `name`, `once`.
+- `effects`: `EFFEKT:Stufe:Sekunden`. Ohne Sekunden hält der Effekt die ganze Runde.
+
+Mitgeliefert sind `default` (Bogen + Pfeil), `detective` (10 Sekunden Speed II, er hat ja schon einen Bogen) und `runner` (Enderperle).
 
 Ältere Configs werden beim ersten Start automatisch umgestellt. Deine Werte bleiben dabei erhalten.
 
@@ -166,5 +209,6 @@ Ist die Datenbank nicht erreichbar, steht im Log „Keine Verbindung zur Datenba
 - **Kills** gesamt und pro Rolle (auch für eigene Rollen)
 - **Tode**, **Wins**, **Loses**, **Winrate** (und K/D)
 
-Gezählt werden nur echte Kills: das Mörder-Team tötet einen Gegner oder umgekehrt. Wer einen Unschuldigen tötet, bekommt keinen Kill.
+Gezählt werden nur echte Kills an Spielern aus einem anderen Team. Neutrale zählen für alle als Gegner. Wer einen Unschuldigen aus dem eigenen Team tötet, bekommt keinen Kill.
+Neutrale bekommen einen Win, wenn sie das Rundenende überleben, sonst einen Lose.
 Wer eine Runde vorzeitig verlässt, bekommt eine Niederlage. Mit `/mm stop` abgebrochene Runden zählen nicht.
