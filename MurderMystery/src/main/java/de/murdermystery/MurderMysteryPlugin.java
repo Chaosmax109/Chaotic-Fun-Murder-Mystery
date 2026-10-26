@@ -74,6 +74,9 @@ public class MurderMysteryPlugin extends JavaPlugin {
         if (Settings.migrate(getConfig(), roles, gold, rewards)) {
             getLogger().info("Einstellungen wurden ins aktuelle Format umgestellt (roles.yml / gold.yml / gold-rewards.yml).");
         }
+        if (Settings.completeRoles(roles, bundled("roles.yml"))) {
+            getLogger().info("Fehlende Einstellungen in roles.yml ergänzt (z. B. chance, show-chance).");
+        }
         // Neue Einstellungen aus Updates in die vorhandenen Dateien übernehmen
         getConfig().options().copyDefaults(true);
         saveConfig();
@@ -89,6 +92,13 @@ public class MurderMysteryPlugin extends JavaPlugin {
         File f = new File(getDataFolder(), name);
         if (!f.exists()) saveResource(name, false);
         return f;
+    }
+
+    /** Die im Plugin mitgelieferte Version einer Config-Datei (inklusive Kommentaren). */
+    private YamlConfiguration bundled(String name) {
+        InputStream in = getResource(name);
+        return in == null ? new YamlConfiguration()
+                : YamlConfiguration.loadConfiguration(new InputStreamReader(in, StandardCharsets.UTF_8));
     }
 
     private YamlConfiguration loadWithDefaults(File file, boolean copy) {

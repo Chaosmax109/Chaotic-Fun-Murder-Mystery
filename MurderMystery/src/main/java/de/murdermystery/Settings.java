@@ -277,6 +277,61 @@ public class Settings {
         return changed;
     }
 
+    /**
+     * Ergänzt in roles.yml fehlende Einstellungen (z. B. show-chance aus neueren Versionen) und Erklär-Kommentare.
+     * Rollen, die der Server-Betreiber gelöscht hat, werden dabei NICHT wieder angelegt.
+     *
+     * @param defaults die mitgelieferte roles.yml aus dem Plugin
+     */
+    public static boolean completeRoles(FileConfiguration roles, FileConfiguration defaults) {
+        boolean changed = false;
+        // Globale Einstellungen (alles außer dem Abschnitt "roles")
+        for (String key : defaults.getKeys(false)) {
+            if (!key.equals("roles") && !roles.isSet(key)) {
+                roles.set(key, defaults.get(key));
+                changed = true;
+            }
+        }
+        ConfigurationSection section = roles.getConfigurationSection("roles");
+        if (section != null) {
+            for (String key : section.getKeys(false)) {
+                String base = "roles." + key + ".";
+                ConfigurationSection def = defaults.getConfigurationSection("roles." + key);
+                if (def != null) {
+                    // Eingebaute Rolle: alle fehlenden Werte aus der mitgelieferten Datei übernehmen
+                    for (var e : def.getValues(true).entrySet()) {
+                        if (!(e.getValue() instanceof ConfigurationSection) && !roles.isSet(base + e.getKey())) {
+                            roles.set(base + e.getKey(), e.getValue());
+                            changed = true;
+                        }
+                    }
+                } else {
+                    // Eigene Rolle: die wichtigsten Einstellungen sichtbar machen
+                    changed |= setIfMissing(roles, base + "team", "INNOCENT");
+                    changed |= setIfMissing(roles, base + "weapon.type", "NONE");
+                }
+                if (!key.equalsIgnoreCase("innocent")) {
+                    changed |= setIfMissing(roles, base + "chance", 100);
+                    changed |= setIfMissing(roles, base + "show-chance", true);
+                }
+            }
+        }
+        // Erklär-Kommentare übernehmen, wo noch keine stehen
+        for (String key : defaults.getKeys(true)) {
+            if (roles.isSet(key) && roles.getComments(key).isEmpty() && !defaults.getComments(key).isEmpty()) {
+                roles.setComments(key, defaults.getComments(key));
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private static boolean setIfMissing(FileConfiguration c, String path, Object value) {
+        if (c.isSet(path)) return false;
+        c.set(path, value);
+        return true;
+    }
+
     private static boolean moveSection(FileConfiguration from, String path, FileConfiguration to, String targetPrefix) {
         ConfigurationSection s = from.getConfigurationSection(path);
         if (s == null || !from.isSet(path)) return false;
