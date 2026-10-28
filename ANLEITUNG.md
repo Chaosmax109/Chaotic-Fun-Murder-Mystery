@@ -27,32 +27,71 @@ Hinweis für 1.8.9-Spieler: Das Spiel ist darauf ausgelegt, dass Mörder mit **e
 
 `MurderMystery-26.2.jar` in den `plugins`-Ordner legen und Server neu starten. Hast du vorher schon die 1.8.8-Version benutzt: deine `plugins/MurderMystery/config.yml` (mit Lobby und Spawns) kann bleiben, sofern die Welt dieselbe ist.
 
-## 4. Arena einrichten (als OP)
+## 4. Lobby und Maps einrichten (als OP)
 
-Baue/lade eine Map. Die Lobby darf in **derselben Welt** wie die Map liegen oder in einer eigenen Welt (auch Multiverse-Welten). Dann:
+Es gibt **eine allgemeine Wartelobby** für alle Maps und **beliebig viele Maps**. Jede Map hat ihre eigenen Spieler- und Gold-Spawns.
+
+### Lobby
 
 | Befehl | Was es macht |
 |---|---|
-| `/mm setlobby` | Wartelobby an deiner Position setzen |
+| `/mm setlobby` | Wartelobby an deiner Position setzen (gilt für alle Maps) |
 | `/mm tplobby` | Zur Lobby teleportieren |
-| `/mm addspawn` | Spieler-Spawn auf der Map hinzufügen – **einen pro Spieler** (also so viele wie `max-players`) |
-| `/mm spawns` | Alle Spieler-Spawns mit Nummer und Position auflisten |
-| `/mm tpspawn <nr>` / `/mm removespawn <nr>` | Zu einem Spawn teleportieren / ihn löschen |
-| `/mm addgold` | Gold-Spawnpunkt hinzufügen (gerne 10–20 über die Map verteilt) |
+
+Die Lobby kann in einer eigenen Welt liegen oder in derselben Welt wie eine Map. Wartende Spieler, die sich weiter als `lobby.max-distance` Blöcke (Standard 40) von der Lobby entfernen, werden zurückteleportiert. Mit `0` ist das abgeschaltet.
+
+### Maps hinzufügen
+
+1. **Welt-Ordner der Map** (z. B. `villa`) in den Server-Ordner legen, also neben `world`, und den Server neu starten.
+   - Alternativ kannst du eine Map auch in einer schon geladenen Welt bauen, z. B. in der Hauptwelt.
+   - Hinweis zu Paper 26.x: Beim ersten Laden verschiebt Paper den Ordner selbst nach `world/dimensions/minecraft/<name>`. Das ist normal, das Plugin findet die Map dort weiterhin.
+2. **Map anlegen:** `/mm map create villa villa`. Das erste Wort ist der Map-Name, das zweite der Welt-Ordner. Ohne Welt-Ordner nimmt das Plugin die Welt, in der du gerade stehst.
+3. **Hingehen:** `/mm map tp villa`
+4. **Spawns setzen:** `/mm addspawn`, **einen pro Spieler** (so viele wie `max-players`), und `/mm addgold`, gerne 10–20 über die Map verteilt.
+
+Die Spawn-Befehle gelten immer für die Map in der Welt, in der du stehst. Liegen mehrere Maps in derselben Welt, hängst du den Map-Namen an, z. B. `/mm addspawn villa` oder `/mm removespawn 3 villa`.
+
+| Befehl | Was es macht |
+|---|---|
+| `/mm map list` | Alle Maps mit Status (spielbar, Welt fehlt, keine Spawns, deaktiviert) |
+| `/mm map create <name> [weltordner]` | Map anlegen |
+| `/mm map tp <name>` | Zur Map teleportieren |
+| `/mm map enable` / `disable <name>` | Map an- und ausschalten |
+| `/mm map next <name>` | Die nächste Runde auf genau dieser Map spielen |
+| `/mm map delete <name>` | Map entfernen (die Welt selbst bleibt) |
+| `/mm addspawn` / `/mm addgold` | Spieler- bzw. Gold-Spawn hinzufügen |
+| `/mm spawns`, `/mm tpspawn <nr>`, `/mm removespawn <nr>` | Spieler-Spawns verwalten |
 | `/mm golds`, `/mm tpgold <nr>`, `/mm removegold <nr>` | Gold-Spawns verwalten |
-| `/mm clearspawns` / `/mm cleargold` | Alle Spawns löschen |
+| `/mm clearspawns` / `/mm cleargold` | Alle Spawns dieser Map löschen |
 | `/mm info` | Zeigt, was eingerichtet ist |
-| `/mm start` | Runde sofort starten (ab 2 Spielern) |
-| `/mm stop` | Laufende Runde abbrechen |
-| `/mm reload` | config.yml neu laden |
+| `/mm start` / `/mm stop` | Runde sofort starten (ab 2 Spielern) / abbrechen |
+| `/mm reload` | Alle Config-Dateien neu laden |
 
-Für alle Spieler: `/mm join`, `/mm leave`, `/stats [Spieler]`.
+Die Map-Welten lädt das Plugin beim Serverstart selbst, Multiverse ist nicht nötig. In den Map-Welten spawnen keine Monster oder Tiere von selbst.
 
-Beim Rundenstart bekommt **jeder Spieler einen eigenen Spawn** (zufällig verteilt). Gibt es weniger Spawns als Spieler, teilen sich einige einen – `/mm info` weist darauf hin.
+### Welche Map gespielt wird (`maps.yml`)
 
-**Lobby in derselben Welt:** Wartende Spieler, die sich weiter als `lobby.max-distance` Blöcke (Standard 40) von der Lobby entfernen, werden zurückteleportiert. So läuft niemand vor Rundenstart auf die Map. Mit `0` wird das abgeschaltet.
+In der `maps.yml` stellst du mit `mode` ein, wie die Map gewählt wird:
 
-Tipp: OPs im **Kreativmodus** sind vom Block-/Inventarschutz ausgenommen – zum Bauen also vorher `/mm leave` oder `/gamemode creative`.
+| `mode` | Verhalten |
+|---|---|
+| `VOTE` (Standard) | Die Spieler stimmen in der Lobby ab. Dafür gibt es ein **Papier „Map-Abstimmung“** im Inventar (Rechtsklick öffnet das Menü) oder `/mm vote`. Die Map mit den meisten Stimmen gewinnt, bei Gleichstand oder ohne Stimmen entscheidet der Zufall. Das Scoreboard zeigt die Stimmen live. |
+| `RANDOM_EACH_ROUND` | Jede Runde eine zufällige Map |
+| `RANDOM_ON_START` | Bei **jedem Serverstart** eine zufällige Map, die bis zum nächsten Neustart bleibt |
+
+- `vote-options`: wie viele Maps zur Abstimmung stehen (zufällig ausgewählt, Standard 3)
+- `avoid-repeat: true`: nie zweimal hintereinander dieselbe Map, auch nicht über einen Neustart hinweg (gilt, sobald es mindestens 2 Maps gibt)
+- Pro Map in der `maps.yml`: `display-name` (Name in Abstimmung und Scoreboard), `enabled`, `icon` (Item im Abstimmungs-Menü)
+
+Wer mit einer älteren Version eine Arena eingerichtet hatte: Die Spawns werden beim ersten Start automatisch als Map übernommen, benannt nach ihrer Welt. Die Lobby bleibt, wie sie war.
+
+### Allgemein
+
+Für alle Spieler: `/mm join`, `/mm leave`, `/mm vote`, `/stats [Spieler]`.
+
+Beim Rundenstart bekommt **jeder Spieler einen eigenen Spawn** (zufällig verteilt). Gibt es weniger Spawns als Spieler, teilen sich einige einen. `/mm info` weist darauf hin.
+
+Tipp: OPs im **Kreativmodus** sind vom Block- und Inventarschutz ausgenommen. Zum Bauen also vorher `/mm leave` oder `/gamemode creative`.
 
 ## 5. Spielablauf
 
@@ -70,11 +109,12 @@ Tipp: OPs im **Kreativmodus** sind vom Block-/Inventarschutz ausgenommen – zum
 
 ## 6. Einstellungen
 
-Im Ordner `plugins/MurderMystery/` liegen fünf Dateien:
+Im Ordner `plugins/MurderMystery/` liegen sechs Dateien:
 
 | Datei | Inhalt |
 |---|---|
-| `config.yml` | Allgemeines: Auto-Join, Spielerzahlen, Zeiten, Lobby, Arena-Punkte |
+| `config.yml` | Allgemeines: Auto-Join, Spielerzahlen, Zeiten, Wartelobby |
+| `maps.yml` | Alle Maps mit ihren Spawns und wie die Map gewählt wird |
 | `roles.yml` | Alle Rollen (auch eigene), Teams und die Anzeige der Wahrscheinlichkeiten |
 | `gold.yml` | Wie und wo Gold erscheint |
 | `gold-rewards.yml` | Was jede Rolle für ihr Gold bekommt |

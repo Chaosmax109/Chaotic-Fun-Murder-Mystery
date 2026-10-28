@@ -1,8 +1,10 @@
 package de.murdermystery;
 
+import de.murdermystery.MapManager.GameMap;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -22,7 +24,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
 
     private Settings settings;
     private StatsManager stats;
-    private Arena arena;
+    private MapManager maps;
     private Game game;
 
     @Override
@@ -30,16 +32,18 @@ public class MurderMysteryPlugin extends JavaPlugin {
         saveDefaultConfig();
         stats = new StatsManager(this);
         loadSettings();
-        arena = new Arena(this);
-        arena.load();
-        game = new Game(this, arena);
+        maps = new MapManager(this);
+        maps.load();
+        game = new Game(this, maps);
         game.startTasks();
         getServer().getPluginManager().registerEvents(new GameListener(this, game), this);
 
-        // Welten von Multiverse & Co. werden evtl. erst nach dem Plugin geladen – daher einen Tick warten
+        // Welten erst laden, wenn der Server fertig gestartet ist
         Bukkit.getScheduler().runTask(this, () -> {
-            if (!arena.isReady()) {
-                getLogger().warning("Arena ist noch nicht eingerichtet! Nutze /mm setlobby und /mm addspawn.");
+            maps.loadWorlds();
+            game.newVoteRound();
+            if (!maps.isReady()) {
+                getLogger().warning("Noch nicht eingerichtet: Lobby (/mm setlobby) und mindestens eine Map mit Spawns (/mm map create, /mm addspawn).");
             } else if (settings.autoJoin) {
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     game.join(p); // Spieler, die bei /reload schon online sind
@@ -127,6 +131,12 @@ public class MurderMysteryPlugin extends JavaPlugin {
         return stats;
     }
 
+    public MapManager maps() {
+        return maps;
+    }
+
+    // ------------------------------------------------------------------ Befehle
+
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         if (!(sender instanceof Player p)) {
@@ -152,6 +162,10 @@ public class MurderMysteryPlugin extends JavaPlugin {
                 openStats(p, args.length > 1 ? args[1] : null);
                 return true;
             }
+            case "vote" -> {
+                game.openVoteMenu(p);
+                return true;
+            }
             default -> {
             }
         }
@@ -164,57 +178,180 @@ public class MurderMysteryPlugin extends JavaPlugin {
         Location loc = p.getLocation();
         switch (sub) {
             case "setlobby" -> {
-                arena.setLobby(loc);
-                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Lobby gesetzt. Sie darf auch in derselben Welt wie die Map liegen.");
+                maps.setLobby(loc);
+                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Lobby gesetzt. Sie gilt für alle Maps.");
             }
             case "tplobby" -> {
-                Location lobby = arena.getLobby();
+                Location lobby = maps.getLobby();
                 if (lobby == null) p.sendMessage(Util.PREFIX + ChatColor.RED + "Keine Lobby gesetzt (oder ihre Welt ist nicht geladen).");
                 else p.teleport(lobby);
             }
-            case "addspawn" -> {
-                arena.add(arena.rawSpawns(), loc);
-                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Spieler-Spawn #" + arena.rawSpawns().size() + " hinzugefügt.");
-            }
-            case "addgold" -> {
-                arena.add(arena.rawGoldSpawns(), loc);
-                p.sendMessage(Util.PREFIX + ChatColor.GOLD + "Gold-Spawn #" + arena.rawGoldSpawns().size() + " hinzugefügt.");
-            }
-            case "spawns" -> listPoints(p, "Spieler-Spawns", arena.rawSpawns());
-            case "golds" -> listPoints(p, "Gold-Spawns", arena.rawGoldSpawns());
-            case "removespawn" -> removePoint(p, args, arena.rawSpawns(), "Spieler-Spawn");
-            case "removegold" -> removePoint(p, args, arena.rawGoldSpawns(), "Gold-Spawn");
-            case "tpspawn" -> teleportToPoint(p, args, arena.rawSpawns());
-            case "tpgold" -> teleportToPoint(p, args, arena.rawGoldSpawns());
-            case "clearspawns" -> {
-                arena.clear(arena.rawSpawns());
-                p.sendMessage(Util.PREFIX + "Alle Spieler-Spawns gelöscht.");
-            }
-            case "cleargold" -> {
-                arena.clear(arena.rawGoldSpawns());
-                p.sendMessage(Util.PREFIX + "Alle Gold-Spawns gelöscht.");
-            }
+            case "map", "maps" -> mapCommand(p, args);
+            case "addspawn", "addgold", "spawns", "golds", "removespawn", "removegold",
+                 "tpspawn", "tpgold", "clearspawns", "cleargold" -> pointCommand(p, sub, args);
             case "start" -> game.forceStart(p);
             case "stop" -> game.forceStop();
             case "reload" -> {
                 loadSettings();
-                arena.load();
+                maps.load();
+                maps.loadWorlds();
+                game.refreshLobby();
                 p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Alle Config-Dateien neu geladen. Stats: "
                         + (stats.isEnabled() ? ChatColor.GREEN + "aktiv" : ChatColor.RED + "deaktiviert"));
             }
             case "info" -> {
-                p.sendMessage(Util.PREFIX + "Lobby: " + (arena.getLobby() != null ? ChatColor.GREEN + "gesetzt" : ChatColor.RED + "fehlt")
-                        + ChatColor.GRAY + ", Spawns: " + ChatColor.YELLOW + arena.rawSpawns().size()
-                        + ChatColor.GRAY + ", Gold-Spawns: " + ChatColor.GOLD + arena.rawGoldSpawns().size()
+                p.sendMessage(Util.PREFIX + "Lobby: " + (maps.getLobby() != null ? ChatColor.GREEN + "gesetzt" : ChatColor.RED + "fehlt")
+                        + ChatColor.GRAY + ", spielbare Maps: " + ChatColor.YELLOW + maps.playableMaps().size() + "/" + maps.all().size()
+                        + ChatColor.GRAY + ", Modus: " + ChatColor.YELLOW + maps.mode()
                         + ChatColor.GRAY + ", Status: " + ChatColor.YELLOW + game.getState());
-                if (arena.rawSpawns().size() < settings.maxPlayers) {
-                    p.sendMessage(Util.PREFIX + ChatColor.YELLOW + "Tipp: Setze " + settings.maxPlayers
-                            + " Spieler-Spawns, damit jeder Spieler (max-players) einen eigenen bekommt.");
+                for (GameMap m : maps.all().values()) {
+                    if (m.playable() && m.spawns.size() < settings.maxPlayers) {
+                        p.sendMessage(Util.PREFIX + ChatColor.YELLOW + "Tipp: Map " + m.key + " hat nur " + m.spawns.size()
+                                + " Spawns – setze " + settings.maxPlayers + ", damit jeder Spieler einen eigenen bekommt.");
+                    }
                 }
             }
             default -> sendHelp(p, true);
         }
         return true;
+    }
+
+    /** /mm map list | create | delete | tp | enable | disable | next */
+    private void mapCommand(Player p, String[] args) {
+        String action = args.length > 1 ? args[1].toLowerCase() : "list";
+        String name = args.length > 2 ? args[2] : null;
+        if (action.equals("list")) {
+            p.sendMessage(Util.PREFIX + ChatColor.YELLOW + "Maps (" + maps.all().size() + ") – Modus " + maps.mode() + ":");
+            for (GameMap m : maps.all().values()) {
+                String status;
+                if (!m.enabled) status = ChatColor.RED + "deaktiviert";
+                else if (Bukkit.getWorld(m.world) == null) status = ChatColor.RED + "Welt fehlt";
+                else if (m.spawns.isEmpty()) status = ChatColor.GOLD + "keine Spawns";
+                else status = ChatColor.GREEN + "spielbar";
+                p.sendMessage(ChatColor.GRAY + " " + m.key + ChatColor.DARK_GRAY + " (" + m.displayName + ChatColor.DARK_GRAY + ", Welt " + m.world + ") "
+                        + status + ChatColor.GRAY + " – " + m.spawns.size() + " Spawns, " + m.gold.size() + " Gold");
+            }
+            return;
+        }
+        if (action.equals("help")) {
+            sendMapHelp(p);
+            return;
+        }
+        if (name == null) {
+            p.sendMessage(Util.PREFIX + ChatColor.RED + "Bitte einen Map-Namen angeben: /mm map " + action + " <name>");
+            return;
+        }
+        if (action.equals("create")) {
+            if (!name.matches("[A-Za-z0-9_-]+")) {
+                p.sendMessage(Util.PREFIX + ChatColor.RED + "Der Name darf nur Buchstaben, Zahlen, _ und - enthalten.");
+                return;
+            }
+            if (maps.get(name) != null) {
+                p.sendMessage(Util.PREFIX + ChatColor.RED + "Eine Map mit diesem Namen gibt es schon.");
+                return;
+            }
+            World world = args.length > 3 ? maps.loadWorld(args[3]) : p.getWorld();
+            if (world == null) {
+                p.sendMessage(Util.PREFIX + ChatColor.RED + "Welt '" + args[3] + "' nicht gefunden. Der Welt-Ordner muss im Server-Ordner liegen.");
+                return;
+            }
+            maps.create(name, world);
+            p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Map '" + name + "' in Welt '" + world.getName() + "' angelegt. "
+                    + ChatColor.GRAY + "Jetzt hingehen (/mm map tp " + name + ") und /mm addspawn sowie /mm addgold setzen.");
+            game.refreshLobby();
+            return;
+        }
+        GameMap m = maps.get(name);
+        if (m == null) {
+            p.sendMessage(Util.PREFIX + ChatColor.RED + "Keine Map mit dem Namen '" + name + "'. Liste: /mm map list");
+            return;
+        }
+        switch (action) {
+            case "delete" -> {
+                maps.delete(m.key);
+                p.sendMessage(Util.PREFIX + "Map '" + m.key + "' gelöscht (die Welt selbst bleibt erhalten).");
+                game.refreshLobby();
+            }
+            case "tp" -> {
+                World w = maps.loadWorld(m.world);
+                if (w == null) {
+                    p.sendMessage(Util.PREFIX + ChatColor.RED + "Die Welt '" + m.world + "' wurde nicht gefunden.");
+                    return;
+                }
+                List<Location> spawns = m.spawnLocations();
+                p.teleport(spawns.isEmpty() ? w.getSpawnLocation() : spawns.get(0));
+            }
+            case "enable", "disable" -> {
+                m.enabled = action.equals("enable");
+                if (m.enabled) maps.loadWorld(m.world);
+                maps.save();
+                p.sendMessage(Util.PREFIX + "Map '" + m.key + "' ist jetzt " + (m.enabled ? ChatColor.GREEN + "aktiviert" : ChatColor.RED + "deaktiviert") + ".");
+                game.refreshLobby();
+            }
+            case "next" -> {
+                if (!m.playable()) {
+                    p.sendMessage(Util.PREFIX + ChatColor.RED + "Map '" + m.key + "' ist nicht spielbar (deaktiviert oder ohne Spawns).");
+                    return;
+                }
+                maps.setForcedNext(m);
+                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Die nächste Runde wird auf '" + m.key + "' gespielt.");
+                game.refreshLobby();
+            }
+            default -> sendMapHelp(p);
+        }
+    }
+
+    /**
+     * Spawn-Befehle für eine Map. Die Map ist die, in deren Welt man steht – liegen mehrere Maps in derselben Welt,
+     * wird der Map-Name als letztes Argument angegeben (z. B. /mm addspawn villa).
+     */
+    private void pointCommand(Player p, String sub, String[] args) {
+        boolean needsNumber = sub.startsWith("remove") || sub.startsWith("tp");
+        int nameIndex = needsNumber ? 2 : 1;
+        GameMap m;
+        if (args.length > nameIndex) {
+            m = maps.get(args[nameIndex]);
+            if (m == null) {
+                p.sendMessage(Util.PREFIX + ChatColor.RED + "Keine Map mit dem Namen '" + args[nameIndex] + "'.");
+                return;
+            }
+        } else {
+            List<GameMap> here = maps.mapsIn(p.getWorld());
+            if (here.isEmpty()) {
+                p.sendMessage(Util.PREFIX + ChatColor.RED + "In dieser Welt gibt es keine Map. Lege eine an mit /mm map create <name>.");
+                return;
+            }
+            if (here.size() > 1) {
+                p.sendMessage(Util.PREFIX + ChatColor.RED + "In dieser Welt liegen mehrere Maps – bitte den Namen angeben: /mm " + sub
+                        + (needsNumber ? " <nr>" : "") + " <map>");
+                return;
+            }
+            m = here.get(0);
+        }
+        boolean spawn = sub.contains("spawn");
+        List<String> list = spawn ? m.spawns : m.gold;
+        String what = spawn ? "Spieler-Spawn" : "Gold-Spawn";
+        String mapInfo = ChatColor.DARK_GRAY + " (Map " + m.key + ")";
+        switch (sub) {
+            case "addspawn", "addgold" -> {
+                if (!p.getWorld().getName().equals(m.world)) {
+                    p.sendMessage(Util.PREFIX + ChatColor.RED + "Du stehst nicht in der Welt der Map '" + m.key + "' (" + m.world + ").");
+                    return;
+                }
+                maps.add(list, p.getLocation());
+                p.sendMessage(Util.PREFIX + (spawn ? ChatColor.GREEN : ChatColor.GOLD) + what + " #" + list.size() + " hinzugefügt." + mapInfo);
+                if (spawn && list.size() == 1) game.refreshLobby(); // Map ist jetzt spielbar
+            }
+            case "spawns", "golds" -> listPoints(p, what + "s" + mapInfo, list);
+            case "removespawn", "removegold" -> removePoint(p, args, list, what);
+            case "tpspawn", "tpgold" -> teleportToPoint(p, args, list);
+            case "clearspawns", "cleargold" -> {
+                maps.clear(list);
+                p.sendMessage(Util.PREFIX + "Alle " + what + "s gelöscht." + mapInfo);
+            }
+            default -> {
+            }
+        }
     }
 
     private void openStats(Player p, String name) {
@@ -250,7 +387,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
     private void removePoint(Player p, String[] args, List<String> raw, String what) {
         Integer nr = number(p, args);
         if (nr == null) return;
-        if (arena.remove(raw, nr)) {
+        if (maps.remove(raw, nr)) {
             p.sendMessage(Util.PREFIX + what + " #" + nr + " gelöscht. (Die Nummern danach rücken auf.)");
         } else {
             p.sendMessage(Util.PREFIX + ChatColor.RED + "Es gibt keinen " + what + " #" + nr + ".");
@@ -281,15 +418,26 @@ public class MurderMysteryPlugin extends JavaPlugin {
         p.sendMessage(ChatColor.DARK_RED + "" + ChatColor.BOLD + "Murder Mystery");
         p.sendMessage(ChatColor.YELLOW + "/mm join" + ChatColor.GRAY + " – Spiel beitreten");
         p.sendMessage(ChatColor.YELLOW + "/mm leave" + ChatColor.GRAY + " – Spiel verlassen");
+        p.sendMessage(ChatColor.YELLOW + "/mm vote" + ChatColor.GRAY + " – Für die nächste Map abstimmen");
         p.sendMessage(ChatColor.YELLOW + "/stats [Spieler]" + ChatColor.GRAY + " – Statistiken anzeigen");
         if (!admin) return;
-        p.sendMessage(ChatColor.YELLOW + "/mm setlobby | tplobby" + ChatColor.GRAY + " – Wartelobby setzen / hinteleportieren");
-        p.sendMessage(ChatColor.YELLOW + "/mm addspawn" + ChatColor.GRAY + " – Spieler-Spawn hinzufügen (einer pro Spieler)");
+        p.sendMessage(ChatColor.YELLOW + "/mm setlobby | tplobby" + ChatColor.GRAY + " – Wartelobby (für alle Maps) setzen / hinteleportieren");
+        p.sendMessage(ChatColor.YELLOW + "/mm map ..." + ChatColor.GRAY + " – Maps verwalten (/mm map help)");
+        p.sendMessage(ChatColor.YELLOW + "/mm addspawn | addgold" + ChatColor.GRAY + " – Spieler-/Gold-Spawn in der Map, in der du stehst");
         p.sendMessage(ChatColor.YELLOW + "/mm spawns | tpspawn <nr> | removespawn <nr>" + ChatColor.GRAY + " – Spawns verwalten");
-        p.sendMessage(ChatColor.YELLOW + "/mm addgold" + ChatColor.GRAY + " – Gold-Spawn hinzufügen");
         p.sendMessage(ChatColor.YELLOW + "/mm golds | tpgold <nr> | removegold <nr>" + ChatColor.GRAY + " – Gold-Spawns verwalten");
-        p.sendMessage(ChatColor.YELLOW + "/mm clearspawns | cleargold" + ChatColor.GRAY + " – alle Spawns löschen");
+        p.sendMessage(ChatColor.YELLOW + "/mm clearspawns | cleargold" + ChatColor.GRAY + " – alle Spawns der Map löschen");
         p.sendMessage(ChatColor.YELLOW + "/mm start | stop" + ChatColor.GRAY + " – Runde erzwingen / abbrechen");
         p.sendMessage(ChatColor.YELLOW + "/mm info | reload" + ChatColor.GRAY + " – Status / Config neu laden");
+    }
+
+    private void sendMapHelp(Player p) {
+        p.sendMessage(ChatColor.DARK_RED + "" + ChatColor.BOLD + "Maps");
+        p.sendMessage(ChatColor.YELLOW + "/mm map list" + ChatColor.GRAY + " – alle Maps mit Status");
+        p.sendMessage(ChatColor.YELLOW + "/mm map create <name> [weltordner]" + ChatColor.GRAY + " – Map anlegen (ohne Weltordner: aktuelle Welt)");
+        p.sendMessage(ChatColor.YELLOW + "/mm map tp <name>" + ChatColor.GRAY + " – zur Map teleportieren");
+        p.sendMessage(ChatColor.YELLOW + "/mm map enable | disable <name>" + ChatColor.GRAY + " – Map an-/ausschalten");
+        p.sendMessage(ChatColor.YELLOW + "/mm map next <name>" + ChatColor.GRAY + " – nächste Runde auf dieser Map spielen");
+        p.sendMessage(ChatColor.YELLOW + "/mm map delete <name>" + ChatColor.GRAY + " – Map entfernen (Welt bleibt)");
     }
 }

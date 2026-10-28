@@ -17,6 +17,7 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
@@ -30,6 +31,7 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.projectiles.ProjectileSource;
 
 public class GameListener implements Listener {
@@ -107,6 +109,11 @@ public class GameListener implements Listener {
             return;
         }
         if (e.getHand() != EquipmentSlot.HAND) return; // Event kommt sonst für Haupt- und Nebenhand doppelt
+        if (game.isVoteItem(e.getItem())) {
+            e.setCancelled(true);
+            game.openVoteMenu(p);
+            return;
+        }
         if ((e.getAction() == Action.RIGHT_CLICK_AIR || e.getAction() == Action.RIGHT_CLICK_BLOCK)
                 && game.isKnife(p, e.getItem())) {
             e.setCancelled(true);
@@ -175,6 +182,17 @@ public class GameListener implements Listener {
 
     @EventHandler
     public void onInventory(InventoryClickEvent e) {
+        if (e.getView().getTopInventory().getHolder() instanceof VoteMenu menu) {
+            e.setCancelled(true);
+            if (e.getWhoClicked() instanceof Player p && e.getClickedInventory() == e.getView().getTopInventory()) {
+                MapManager.GameMap m = menu.mapAt(e.getSlot());
+                if (m != null) {
+                    game.vote(p, m);
+                    menu.render(p);
+                }
+            }
+            return;
+        }
         if (e.getView().getTopInventory().getHolder() instanceof StatsMenu
                 || (e.getWhoClicked() instanceof Player p && protectedPlayer(p))) {
             e.setCancelled(true);
@@ -183,7 +201,16 @@ public class GameListener implements Listener {
 
     @EventHandler
     public void onInventoryDrag(InventoryDragEvent e) {
-        if (e.getView().getTopInventory().getHolder() instanceof StatsMenu) e.setCancelled(true);
+        InventoryHolder holder = e.getView().getTopInventory().getHolder();
+        if (holder instanceof StatsMenu || holder instanceof VoteMenu) e.setCancelled(true);
+    }
+
+    /** Keine Monster und Tiere, die von selbst in den Map-Welten auftauchen. */
+    @EventHandler
+    public void onCreatureSpawn(CreatureSpawnEvent e) {
+        if (e.getSpawnReason() == CreatureSpawnEvent.SpawnReason.NATURAL && plugin.maps().isMapWorld(e.getLocation().getWorld())) {
+            e.setCancelled(true);
+        }
     }
 
     @EventHandler

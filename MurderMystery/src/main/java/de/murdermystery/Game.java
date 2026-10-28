@@ -1,5 +1,6 @@
 package de.murdermystery;
 
+import de.murdermystery.MapManager.GameMap;
 import de.murdermystery.Settings.GoldReward;
 import de.murdermystery.Settings.RewardItem;
 import de.murdermystery.Settings.Role;
@@ -10,6 +11,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Item;
@@ -17,6 +19,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
@@ -47,7 +50,7 @@ public class Game {
     private static final int SLOT_ARROW = 9;
 
     private final MurderMysteryPlugin plugin;
-    private final Arena arena;
+    private final MapManager maps;
     private final Random random = new Random();
 
     // Concurrent, weil der Chat-Listener asynchron darauf zugreift
@@ -78,12 +81,21 @@ public class Game {
     private int endCountdown;
     private String heroName;
 
+    /** Map der laufenden (bzw. zuletzt gespielten) Runde. */
+    private GameMap map;
+    /** Maps, die in der Lobby zur Abstimmung stehen. */
+    private final List<GameMap> voteOptions = new ArrayList<>();
+    /** Spieler → Schlüssel der gewählten Map. */
+    private final Map<UUID, String> votes = new HashMap<>();
+    private final NamespacedKey voteItemKey;
+
     private BukkitTask ticker;
     private BukkitTask fastTicker;
 
-    public Game(MurderMysteryPlugin plugin, Arena arena) {
+    public Game(MurderMysteryPlugin plugin, MapManager maps) {
         this.plugin = plugin;
-        this.arena = arena;
+        this.maps = maps;
+        this.voteItemKey = new NamespacedKey(plugin, "vote_item");
     }
 
     private Settings s() {
@@ -124,9 +136,9 @@ public class Game {
             p.sendMessage(Util.PREFIX + "Du bist bereits im Spiel.");
             return;
         }
-        if (!arena.isReady()) {
+        if (!maps.isReady()) {
             if (p.hasPermission("mm.admin")) {
-                p.sendMessage(Util.PREFIX + ChatColor.RED + "Die Arena ist noch nicht eingerichtet. (/mm setlobby, /mm addspawn)");
+                p.sendMessage(Util.PREFIX + ChatColor.RED + "Noch nicht eingerichtet: Lobby (/mm setlobby) und mindestens eine Map mit Spawns (/mm map create, /mm addspawn).");
             }
             return;
         }
@@ -134,7 +146,7 @@ public class Game {
         if (state == State.INGAME || state == State.ENDING || players.size() >= s().maxPlayers) {
             spectators.add(p.getUniqueId());
             prepare(p, GameMode.SPECTATOR);
-            p.teleport(state == State.INGAME ? arena.getSpawns().get(0) : arena.getLobby());
+            p.teleport(state == State.INGAME ? respawnPoint() : maps.getLobby());
             p.sendMessage(Util.PREFIX + "Eine Runde läuft gerade – du schaust zu und spielst in der nächsten Runde mit.");
             if (state == State.INGAME) {
                 boards.get(p.getUniqueId()).setHiddenNames(playerNames(players), true);
@@ -143,7 +155,9 @@ public class Game {
         }
         players.add(p.getUniqueId());
         prepare(p, GameMode.ADVENTURE);
-        p.teleport(arena.getLobby());
+        p.teleport(maps.getLobby());
+        if (voteOptions.isEmpty()) newVoteRound();
+        giveVoteItem(p);
         broadcast(ChatColor.YELLOW + p.getName() + ChatColor.GRAY + " ist beigetreten ("
                 + ChatColor.GREEN + players.size() + ChatColor.GRAY + "/" + ChatColor.GREEN + s().maxPlayers + ChatColor.GRAY + ")");
         updateBoards();
@@ -159,6 +173,7 @@ public class Game {
         spectators.remove(id);
         boards.remove(id);
         gold.remove(id);
+        votes.remove(id);
 
         if (state == State.INGAME && roles.containsKey(id)) {
             left.add(id); // wer mitten in der Runde geht, bekommt eine Niederlage
@@ -207,7 +222,7 @@ public class Game {
         int max = s().lobbyMaxDistance;
         if (max <= 0 || (state != State.WAITING && state != State.STARTING)) return;
         if (!players.contains(p.getUniqueId()) || p.getGameMode() == GameMode.CREATIVE) return;
-        Location lobby = arena.getLobby();
+        Location lobby = maps.getLobby();
         if (lobby == null) return;
         if (!p.getWorld().equals(lobby.getWorld()) || p.getLocation().distanceSquared(lobby) > (double) max * max) {
             p.teleport(lobby);
@@ -215,12 +230,98 @@ public class Game {
         }
     }
 
+    // ------------------------------------------------------------------ Map-Abstimmung
+
+    /** Stellt neue Maps zur Abstimmung und löscht alle Stimmen (nach jeder Runde und bei /mm reload). */
+    public void newVoteRound() {
+        votes.clear();
+        voteOptions.clear();
+        if (maps.mode() == MapManager.Mode.VOTE) {
+            voteOptions.addAll(maps.voteCandidates());
+        }
+    }
+
+    /** Abstimmung nur im Modus VOTE, in der Lobby und wenn es mehr als eine Map zur Auswahl gibt. */
+    public boolean votingOpen() {
+        return maps.mode() == MapManager.Mode.VOTE && voteOptions.size() > 1 && maps.forcedNext() == null
+                && (state == State.WAITING || state == State.STARTING);
+    }
+
+    public List<GameMap> voteOptions() {
+        return voteOptions;
+    }
+
+    public int votesFor(GameMap m) {
+        int c = 0;
+        for (String key : votes.values()) if (key.equals(m.key)) c++;
+        return c;
+    }
+
+    public String voteOf(Player p) {
+        return votes.get(p.getUniqueId());
+    }
+
+    public void openVoteMenu(Player p) {
+        if (!players.contains(p.getUniqueId()) || !votingOpen()) {
+            p.sendMessage(Util.PREFIX + ChatColor.RED + "Gerade läuft keine Map-Abstimmung.");
+            return;
+        }
+        p.openInventory(new VoteMenu(this).render(p).getInventory());
+    }
+
+    public void vote(Player p, GameMap m) {
+        if (!players.contains(p.getUniqueId()) || !votingOpen() || !voteOptions.contains(m)) return;
+        votes.put(p.getUniqueId(), m.key);
+        p.sendMessage(Util.PREFIX + "Du hast für " + ChatColor.YELLOW + m.displayName + ChatColor.GRAY + " gestimmt.");
+        Util.sound(p, 1.2f, "ui.button.click");
+        updateBoards();
+    }
+
+    /** Die Map mit den meisten Stimmen (bei Gleichstand zufällig), oder null ohne Stimmen. */
+    private GameMap voteWinner() {
+        List<GameMap> best = new ArrayList<>();
+        int max = 0;
+        for (GameMap m : voteOptions) {
+            int v = votesFor(m);
+            if (v > max) {
+                max = v;
+                best.clear();
+            }
+            if (v == max && v > 0) best.add(m);
+        }
+        return best.isEmpty() ? null : best.get(random.nextInt(best.size()));
+    }
+
+    public boolean isVoteItem(ItemStack it) {
+        return it != null && it.hasItemMeta()
+                && it.getItemMeta().getPersistentDataContainer().has(voteItemKey, PersistentDataType.BYTE);
+    }
+
+    private void giveVoteItem(Player p) {
+        if (!votingOpen()) return;
+        ItemStack it = item(Material.PAPER, ChatColor.YELLOW + "Map-Abstimmung " + ChatColor.GRAY + "(Rechtsklick)");
+        ItemMeta meta = it.getItemMeta();
+        meta.getPersistentDataContainer().set(voteItemKey, PersistentDataType.BYTE, (byte) 1);
+        it.setItemMeta(meta);
+        p.getInventory().setItem(4, it);
+    }
+
+    /** Text für Scoreboard & Co.: welche Map als Nächstes gespielt wird. */
+    private String nextMapText() {
+        if (maps.forcedNext() != null) return maps.forcedNext().displayName;
+        return switch (maps.mode()) {
+            case RANDOM_ON_START -> maps.startMap() != null ? maps.startMap().displayName : "?";
+            case RANDOM_EACH_ROUND -> "Zufällig";
+            case VOTE -> voteOptions.size() == 1 ? voteOptions.get(0).displayName : "Abstimmung";
+        };
+    }
+
     // ------------------------------------------------------------------ Ticks
 
     private void tick() {
         switch (state) {
             case WAITING -> {
-                if (players.size() >= s().minPlayers && arena.isReady()) {
+                if (players.size() >= s().minPlayers && maps.isReady()) {
                     state = State.STARTING;
                     countdown = s().lobbyCountdown;
                 }
@@ -351,12 +452,17 @@ public class Game {
 
     private void startGame() {
         List<Player> list = online(players);
-        List<Location> spawns = new ArrayList<>(arena.getSpawns());
+        GameMap chosen = maps.chooseForRound(voteWinner());
+        if (chosen != null) maps.loadWorld(chosen.world);
+        List<Location> spawns = chosen == null ? new ArrayList<>() : new ArrayList<>(chosen.spawnLocations());
         if (list.size() < 2 || spawns.isEmpty()) {
             state = State.WAITING;
+            broadcast(ChatColor.RED + "Keine spielbare Map gefunden – Start abgebrochen.");
             return;
         }
+        map = chosen;
         state = State.INGAME;
+        broadcast("Gespielt wird auf: " + ChatColor.YELLOW + map.displayName);
         forceStart = false;
         Collections.shuffle(spawns);
         roles.clear();
@@ -564,6 +670,7 @@ public class Game {
         left.clear();
         gold.clear();
         bowHolders.clear();
+        newVoteRound();
         List<Player> all = online(allMembers());
         players.clear();
         spectators.clear();
@@ -571,6 +678,17 @@ public class Game {
         for (Player p : all) {
             join(p);
         }
+    }
+
+    /** Nach /mm reload oder Änderungen an den Maps: Abstimmung neu aufsetzen und Abstimmungs-Items verteilen. */
+    public void refreshLobby() {
+        if (state != State.WAITING && state != State.STARTING) return;
+        newVoteRound();
+        for (Player p : online(players)) {
+            p.getInventory().setItem(4, null);
+            giveVoteItem(p);
+        }
+        updateBoards();
     }
 
     // ------------------------------------------------------------------ Kampf
@@ -753,7 +871,8 @@ public class Game {
     }
 
     private void spawnGold() {
-        List<Location> spots = arena.getGoldSpawns();
+        if (map == null) return;
+        List<Location> spots = map.goldLocations();
         if (spots.isEmpty()) return;
         List<Integer> free = new ArrayList<>();
         int onMap = 0;
@@ -836,6 +955,15 @@ public class Game {
         lines.add(state == State.STARTING
                 ? ChatColor.WHITE + "Start in: " + ChatColor.GREEN + Math.max(countdown, 0) + "s"
                 : ChatColor.WHITE + "Warte auf Spieler...");
+        lines.add("");
+        if (votingOpen()) {
+            lines.add(ChatColor.WHITE + "Map-Abstimmung:");
+            for (GameMap m : voteOptions) {
+                lines.add(ChatColor.GRAY + " " + m.displayName + ChatColor.GRAY + ": " + ChatColor.YELLOW + votesFor(m));
+            }
+        } else {
+            lines.add(ChatColor.WHITE + "Map: " + ChatColor.YELLOW + nextMapText());
+        }
         if (!s().showChances) return;
         int n = Math.max(players.size(), 2);
         List<String> chances = new ArrayList<>();
@@ -854,6 +982,9 @@ public class Game {
 
     private void gameLines(List<String> lines, UUID id) {
         lines.add(ChatColor.WHITE + "Rolle: " + roleDisplay(id));
+        if (map != null) {
+            lines.add(ChatColor.WHITE + "Map: " + ChatColor.YELLOW + map.displayName);
+        }
         lines.add("");
         lines.add(ChatColor.WHITE + "Unschuldige übrig: " + ChatColor.GREEN + countAlive(Team.INNOCENT));
         if (murdererNames().size() > 1) {
@@ -916,11 +1047,11 @@ public class Game {
     }
 
     public Location respawnPoint() {
-        List<Location> spawns = arena.getSpawns();
+        List<Location> spawns = map == null ? List.of() : map.spawnLocations();
         if (state == State.INGAME && !spawns.isEmpty()) {
             return spawns.get(random.nextInt(spawns.size()));
         }
-        return arena.getLobby();
+        return maps.getLobby();
     }
 
     private int countAlive(Team team) {

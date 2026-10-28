@@ -1,0 +1,32 @@
+# ===============================
+#   Murder Mystery – Maps
+# ===============================
+# Jede Map ist eine eigene Welt (oder ein Bereich in einer Welt) mit eigenen Spieler- und Gold-Spawns.
+# Maps hinzufügen:
+#   1. Den Welt-Ordner der Map in den Server-Ordner legen (neben "world").
+#   2. Im Spiel: /mm map create <name> <weltordner>   (oder ohne Weltordner = die Welt, in der du stehst)
+#   3. /mm map tp <name>, dort mit /mm addspawn und /mm addgold die Punkte setzen.
+# Die Welten werden beim Serverstart automatisch geladen – Multiverse ist nicht nötig.
+# Nach Änderungen an dieser Datei: /mm reload
+
+# Wie die Map für eine Runde ausgewählt wird:
+#   VOTE              – die Spieler stimmen in der Lobby ab (Item im Inventar oder /mm vote)
+#   RANDOM_EACH_ROUND – jede Runde eine zufällige Map
+#   RANDOM_ON_START   – bei jedem Serverstart eine zufällige Map, die bis zum nächsten Neustart bleibt
+mode: VOTE
+
+# Wie viele Maps bei der Abstimmung zur Wahl stehen (zufällig ausgewählt)
+vote-options: 3
+
+# Nicht zweimal hintereinander dieselbe Map (auch über Neustarts hinweg)
+avoid-repeat: true
+
+# Die Maps. Wird per Befehl gepflegt – display-name, enabled und icon kannst du hier auch direkt ändern.
+#   display-name: Name in Abstimmung und Scoreboard
+#   world:        Name des Welt-Ordners
+#   enabled:      false = Map wird nicht gespielt
+#   icon:         Item im Abstimmungs-Menü
+maps: {}
+
+# Wird automatisch gesetzt (zuletzt gespielte Map)
+last-map: null
