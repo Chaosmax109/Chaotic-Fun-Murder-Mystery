@@ -50,6 +50,16 @@ Es gibt **eine globale Wartelobby** und **beliebig viele Maps**. Jede Map hat ih
 
 Eine Lobby kann in einer eigenen Welt liegen oder in derselben Welt wie eine Map. Wartende Spieler, die sich weiter als `lobby.max-distance` Blöcke (Standard 40) von der Lobby entfernen, werden zurückteleportiert. Mit `0` ist das abgeschaltet.
 
+### Schnellstart: Test-Map
+
+Zum Ausprobieren ohne eigene Map: **`/mm map testmap`**, das geht im Spiel und in der Server-Konsole. Das Plugin erzeugt dann:
+- eine Flachwelt `mm_testmap`
+- eine ummauerte **Arena** (41 × 41 Blöcke) mit vier Räumen, Säulen und Deckungen
+- **16 Spieler-Spawns** und **12 Gold-Spawns**, schon gesetzt
+- daneben eine **Glas-Lobby** als eigene Lobby der Map. Ist noch keine globale Lobby gesetzt, wird sie auch die globale Lobby.
+
+Danach ist die Map sofort spielbar. Ansehen: `/mm map tp testmap`, Lobby: `/mm tplobby testmap`, nächste Runde darauf: `/mm map next testmap`. Erneutes `/mm map testmap` baut sie neu auf, z. B. wenn etwas kaputtgegangen ist. Nicht mehr gebraucht? `/mm map delete testmap`.
+
 ### Maps hinzufügen
 
 1. **Welt-Ordner der Map** (z. B. `villa`) in den Server-Ordner legen, also neben `world`, und den Server neu starten.
@@ -65,6 +75,7 @@ Die Spawn-Befehle gelten immer für die Map in der Welt, in der du stehst. Liege
 |---|---|
 | `/mm map list` | Alle Maps mit Status (spielbar, Welt fehlt, keine Spawns, deaktiviert) |
 | `/mm map create <name> [weltordner]` | Map anlegen |
+| `/mm map testmap` | Fertige Test-Map (Flachwelt mit Arena und Lobby) erzeugen |
 | `/mm map tp <name>` | Zur Map teleportieren |
 | `/mm map enable` / `disable <name>` | Map an- und ausschalten |
 | `/mm map next <name>` | Die nächste Runde auf genau dieser Map spielen |

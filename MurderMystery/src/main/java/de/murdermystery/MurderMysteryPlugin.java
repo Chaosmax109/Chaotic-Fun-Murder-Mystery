@@ -143,7 +143,20 @@ public class MurderMysteryPlugin extends JavaPlugin {
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         if (!(sender instanceof Player p)) {
-            sender.sendMessage("Nur Spieler können diesen Befehl nutzen.");
+            // Aus der Konsole: Test-Map erzeugen und Maps auflisten
+            if (args.length >= 2 && args[0].equalsIgnoreCase("map") && args[1].equalsIgnoreCase("testmap")) {
+                GameMap test = TestMapBuilder.build(maps);
+                sender.sendMessage("Test-Map '" + test.key + "' erstellt: Welt " + TestMapBuilder.WORLD + ", "
+                        + test.spawns.size() + " Spawns, " + test.gold.size() + " Gold-Spawns, eigene Lobby.");
+                game.refreshLobby();
+            } else if (args.length >= 2 && args[0].equalsIgnoreCase("map") && args[1].equalsIgnoreCase("list")) {
+                for (GameMap m : maps.all().values()) {
+                    sender.sendMessage(m.key + " (Welt " + m.world + "): " + (m.playable() ? "spielbar" : "nicht spielbar")
+                            + ", " + m.spawns.size() + " Spawns, " + m.gold.size() + " Gold, Lobby: " + (m.lobby.isEmpty() ? "global" : "eigene"));
+                }
+            } else {
+                sender.sendMessage("Aus der Konsole gehen nur: mm map testmap, mm map list");
+            }
             return true;
         }
         if (cmd.getName().equalsIgnoreCase("stats")) {
@@ -249,6 +262,16 @@ public class MurderMysteryPlugin extends JavaPlugin {
         }
         if (action.equals("help")) {
             sendMapHelp(p);
+            return;
+        }
+        if (action.equals("testmap")) {
+            p.sendMessage(Util.PREFIX + "Baue die Test-Map – einen Moment …");
+            GameMap test = TestMapBuilder.build(maps);
+            p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Test-Map '" + test.key + "' ist fertig: Flachwelt '" + TestMapBuilder.WORLD
+                    + "' mit Arena (" + test.spawns.size() + " Spawns, " + test.gold.size() + " Gold-Spawns) und eigener Glas-Lobby.");
+            p.sendMessage(Util.PREFIX + ChatColor.GRAY + "Ansehen: /mm map tp " + test.key + " – Lobby: /mm tplobby " + test.key
+                    + " – nächste Runde darauf: /mm map next " + test.key);
+            game.refreshLobby();
             return;
         }
         if (name == null && action.equals("setlobby")) {
@@ -465,6 +488,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
         p.sendMessage(ChatColor.DARK_RED + "" + ChatColor.BOLD + "Maps");
         p.sendMessage(ChatColor.YELLOW + "/mm map list" + ChatColor.GRAY + " – alle Maps mit Status");
         p.sendMessage(ChatColor.YELLOW + "/mm map create <name> [weltordner]" + ChatColor.GRAY + " – Map anlegen (ohne Weltordner: aktuelle Welt)");
+        p.sendMessage(ChatColor.YELLOW + "/mm map testmap" + ChatColor.GRAY + " – fertige Test-Map (Flachwelt mit Arena und Lobby) erzeugen");
         p.sendMessage(ChatColor.YELLOW + "/mm map tp <name>" + ChatColor.GRAY + " – zur Map teleportieren");
         p.sendMessage(ChatColor.YELLOW + "/mm map enable | disable <name>" + ChatColor.GRAY + " – Map an-/ausschalten");
         p.sendMessage(ChatColor.YELLOW + "/mm map setlobby [name]" + ChatColor.GRAY + " – eigene Wartelobby für diese Map setzen");

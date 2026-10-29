@@ -37,7 +37,7 @@ Die fertigen Plugin-Dateien gibt es unter [Releases](../../releases):
 
 Server aufsetzen, Arena einrichten und alle Befehle: siehe [ANLEITUNG.md](ANLEITUNG.md).
 
-Kurz: `/mm setlobby`, `/mm map create <name>`, dann auf der Map mehrmals `/mm addspawn` und `/mm addgold` – fertig.
+Kurz: `/mm setlobby`, `/mm map create <name>`, dann auf der Map mehrmals `/mm addspawn` und `/mm addgold` – fertig. Zum schnellen Ausprobieren: `/mm map testmap` erzeugt eine fertige Test-Map.
 
 ## Selbst bauen
 
