@@ -27,40 +27,179 @@ Hinweis für 1.8.9-Spieler: Das Spiel ist darauf ausgelegt, dass Mörder mit **e
 
 `MurderMystery-26.2.jar` in den `plugins`-Ordner legen und Server neu starten. Hast du vorher schon die 1.8.8-Version benutzt: deine `plugins/MurderMystery/config.yml` (mit Lobby und Spawns) kann bleiben, sofern die Welt dieselbe ist.
 
-## 4. Arena einrichten (als OP)
+## 4. Maps und Lobby einrichten (als OP)
 
-Baue/lade eine Map. Die Lobby darf in **derselben Welt** wie die Map liegen oder in einer eigenen Welt (auch Multiverse-Welten). Dann:
+### So sind die Maps aufgebaut
+
+Alle Maps liegen im Ordner **`plugins/MurderMystery/arenas/`**:
+
+```
+arenas/
+├── Dam/                 ← Welt-Ordner einer Map (mit level.dat), oder Dam.zip
+├── default_map.yml      ← Standard-Map (wird beim ersten Start automatisch erzeugt)
+├── dam.yml              ← Einstellungen der Map "dam"
+└── importiert/          ← hier landen ZIP-Dateien nach dem Entpacken
+```
+
+**Jede Map ist eine `.yml`-Datei.** Darin stehen:
+
+```yaml
+name: "&bDam"              # Anzeigename
+world: Dam                 # Welt-Ordner hier in arenas/ – oder eine vorhandene Server-Welt (z. B. world)
+enabled: true
+icon: WATER_BUCKET         # Item im Menü und in der Abstimmung
+description: "Staudamm mit Kontrollraum"
+author: "Max"
+
+lobby:
+  mode: OWN                # GLOBAL = globale Lobby aus der config.yml, OWN = eigene Lobby (location)
+  location: 80.5 -60 0.5 90 0
+  radius: 15               # Lobby-Bereich: weiter weg = zurück in die Lobby (0 = aus)
+
+area:                      # Spielbereich (Größe der Map): wer ihn in der Runde verlässt, kommt zurück zu einem Spawn
+  enabled: true
+  corner1: -20 -62 -20
+  corner2: 20 -40 20
+
+spawns:                    # Spieler-Spawns: "x y z" oder "x y z yaw pitch"
+- 14.5 -60 0.5 90 0
+- 12.5 -60 5.5 113 0
+
+gold:                      # Gold-Spawns
+- -15.5 -60 -15.5
+```
+
+Alles kannst du direkt in der Datei ändern und mit `/mm reload` übernehmen, oder im Spiel setzen, siehe unten. Die Koordinaten gelten immer in der Welt der Map.
+
+### Neue Map hinzufügen
+
+1. Den **Welt-Ordner** (z. B. `Dam`) oder eine **ZIP-Datei** (`Dam.zip`) nach `plugins/MurderMystery/arenas/` hochladen, z. B. per FTP oder im Dateimanager deines Hosters.
+2. **Server neu starten**, oder `/mm map import` bzw. im Menü `/mm maps` → „Neue Maps aus arenas/ einrichten“. Das geht auch in der Konsole. Dann passiert Folgendes:
+   - Eine ZIP wird zu einem Welt-Ordner entpackt.
+   - Für jeden neuen Welt-Ordner wird automatisch eine `.yml` angelegt, hier `dam.yml` mit `world: Dam`.
+   - Die Welt wird als Server-Welt `mm_dam` eingerichtet und geladen.
+3. **Spawns setzen:** `/mm map tp dam`, dann `/mm addspawn` (einen pro Spieler, so viele wie `max-players`) und `/mm addgold`. Alternativ im Menü oder direkt in der `dam.yml`.
+
+Hinweise:
+- Ein Welt-Ordner aus `arenas/` wird nur **beim ersten Mal** auf den Server kopiert. Hast du die Map danach im Welt-Ordner geändert, übernimmt `/mm map reinstall dam` die neue Version.
+- Paper 26.x legt die Server-Welt intern unter `world/dimensions/minecraft/mm_dam` ab. Das ist normal.
+- Statt eines Welt-Ordners kann in `world:` auch eine Welt stehen, die schon auf dem Server existiert, z. B. die Hauptwelt `world`. Dafür gibt es `/mm map create <name> [welt]`.
+
+### Standard-Map
+
+Beim **allerersten Start**, wenn es noch keine Map gibt, erzeugt das Plugin automatisch **`default_map`**:
+- eine Flachwelt mit ummauerter Arena (41 × 41) mit vier Räumen, Säulen und Deckungen
+- 16 Spieler-Spawns und 12 Gold-Spawns
+- eine Glas-Lobby als eigene Lobby
+- einen fertig eingestellten Spielbereich
+
+Damit ist das Plugin sofort spielbar. Die Welt der Standard-Map liegt danach wie jede andere Map als Ordner `arenas/default_map/`, zum Ansehen, Herunterladen und Bearbeiten. `/mm map testmap` baut sie jederzeit neu auf.
+
+### Lobby
 
 | Befehl | Was es macht |
 |---|---|
-| `/mm setlobby` | Wartelobby an deiner Position setzen |
-| `/mm tplobby` | Zur Lobby teleportieren |
-| `/mm addspawn` | Spieler-Spawn auf der Map hinzufügen – **einen pro Spieler** (also so viele wie `max-players`) |
-| `/mm spawns` | Alle Spieler-Spawns mit Nummer und Position auflisten |
-| `/mm tpspawn <nr>` / `/mm removespawn <nr>` | Zu einem Spawn teleportieren / ihn löschen |
-| `/mm addgold` | Gold-Spawnpunkt hinzufügen (gerne 10–20 über die Map verteilt) |
+| `/mm setlobby` | Globale Lobby an deiner Position setzen |
+| `/mm map setlobby [map]` | Eigene Lobby der Map an deiner Position setzen (`lobby.mode: OWN`) |
+| `/mm map clearlobby <map>` | Map nutzt wieder die globale Lobby (`lobby.mode: GLOBAL`) |
+| `/mm tplobby [map]` | Zur globalen Lobby teleportieren, oder zur Lobby einer Map |
+
+**Welche Lobby genutzt wird:**
+1. Die **eigene Lobby der nächsten Map** (`lobby.mode: OWN`), sobald feststeht, welche Map als Nächstes kommt:
+   - bei `RANDOM_ON_START` immer
+   - bei `RANDOM_EACH_ROUND`, weil die Map schon zu Beginn der Wartezeit ausgelost wird
+   - nach `/mm map next`
+   - Dann gilt auch ihr `lobby.radius`.
+2. Sonst die **globale Lobby** mit `lobby.max-distance` aus der `config.yml`, z. B. während einer Map-Abstimmung.
+3. **Fallback:** Ist keine globale Lobby gesetzt, wird die Position des **ersten Spielers**, der den Server betritt, als globale Lobby gespeichert. Ändern kannst du sie mit `/mm setlobby`.
+
+### Map-Menü: `/mm maps`
+
+- **Übersicht:** alle Maps mit Status. Bei nicht spielbaren Maps steht der Grund dabei. Unten gibt es Knöpfe für:
+  - Standard-Map erzeugen
+  - neue Maps aus `arenas/` einrichten
+  - Auswahl-Modus wechseln
+  - globale Lobby setzen
+- **Map anklicken → Bearbeiten:**
+  - zur Map teleportieren
+  - Spieler- und Gold-Spawn hier hinzufügen
+  - eigene Lobby setzen (Rechtsklick: zurück zu GLOBAL)
+  - **Lobby-Bereich** (Radius ±1, mit Shift ±5)
+  - **Spielbereich:** Linksklick setzt Ecke 1, Rechtsklick Ecke 2, Shift schaltet an und aus
+  - Icon aus der Hand übernehmen
+  - aktivieren / deaktivieren
+  - als nächste Map spielen
+  - Spawns oder Map löschen, jeweils mit Shift-Klick
+
+### Alle Map-Befehle
+
+Die Spawn-Befehle gelten für die Map in der Welt, in der du stehst. Liegen mehrere Maps in derselben Welt, hängst du den Map-Namen an, z. B. `/mm addspawn dam` oder `/mm removespawn 3 dam`.
+
+| Befehl | Was es macht |
+|---|---|
+| `/mm maps` | Map-Menü |
+| `/mm map list` | Alle Maps mit Status, Grund (falls nicht spielbar) und wo ihre Datei und ihr Welt-Ordner liegen |
+| `/mm map import` | Neue Welt-Ordner und ZIPs in `arenas/` einrichten |
+| `/mm map create <name> [welt]` | Map-Datei für eine vorhandene Welt anlegen (Welt-Ordner aus `arenas/` oder Server-Welt) |
+| `/mm map testmap` | Standard-Map (neu) erzeugen |
+| `/mm map tp <name>` | Zur Map teleportieren |
+| `/mm map edit <name>` | Bearbeiten-Menü öffnen |
+| `/mm map area <name> corner1 \| corner2 \| on \| off` | Spielbereich (Größe) festlegen |
+| `/mm map setlobby [name]` / `clearlobby <name>` | Eigene Lobby setzen / zurück zu GLOBAL |
+| `/mm map enable` / `disable <name>` | Map an- und ausschalten |
+| `/mm map next <name>` | Die nächste Runde auf dieser Map spielen |
+| `/mm map rename` / `description` / `author <name> <text>` | Anzeigename, Beschreibung, Erbauer |
+| `/mm map reinstall <name>` | Geänderten Welt-Ordner aus `arenas/` übernehmen |
+| `/mm map export <name> [ordner]` | Welt einer Map, die eine Server-Welt nutzt, als Ordner nach `arenas/` kopieren und die Map darauf umstellen |
+| `/mm map delete <name>` | Map-Datei löschen (Welt-Ordner und Server-Welt bleiben) |
+| `/mm addspawn` / `/mm addgold` | Spieler- bzw. Gold-Spawn hinzufügen |
+| `/mm spawns`, `/mm tpspawn <nr>`, `/mm removespawn <nr>` | Spieler-Spawns verwalten |
 | `/mm golds`, `/mm tpgold <nr>`, `/mm removegold <nr>` | Gold-Spawns verwalten |
-| `/mm clearspawns` / `/mm cleargold` | Alle Spawns löschen |
+| `/mm clearspawns` / `/mm cleargold` | Alle Spawns dieser Map löschen |
 | `/mm info` | Zeigt, was eingerichtet ist |
-| `/mm start` | Runde sofort starten (ab 2 Spielern) |
-| `/mm stop` | Laufende Runde abbrechen |
-| `/mm reload` | config.yml neu laden |
+| `/mm start` / `/mm stop` | Runde sofort starten (ab 2 Spielern) / abbrechen |
+| `/mm reload` | Alle Config- und Arena-Dateien neu laden |
 
-Für alle Spieler: `/mm join`, `/mm leave`, `/stats [Spieler]`.
+### Welche Map gespielt wird (`maps.yml`)
 
-Beim Rundenstart bekommt **jeder Spieler einen eigenen Spawn** (zufällig verteilt). Gibt es weniger Spawns als Spieler, teilen sich einige einen – `/mm info` weist darauf hin.
+In der `maps.yml` stellst du mit `mode` ein, wie die Map gewählt wird. Das geht auch im Menü:
 
-**Lobby in derselben Welt:** Wartende Spieler, die sich weiter als `lobby.max-distance` Blöcke (Standard 40) von der Lobby entfernen, werden zurückteleportiert. So läuft niemand vor Rundenstart auf die Map. Mit `0` wird das abgeschaltet.
+| `mode` | Verhalten |
+|---|---|
+| `VOTE` (Standard) | Die Spieler stimmen in der Lobby ab: Papier in der Hotbar oder `/mm vote`. Die Map mit den meisten Stimmen gewinnt, bei Gleichstand oder ohne Stimmen entscheidet der Zufall. |
+| `RANDOM_EACH_ROUND` | Jede Runde eine zufällige Map |
+| `RANDOM_ON_START` | Bei **jedem Serverstart** eine zufällige Map, die bis zum nächsten Neustart bleibt |
 
-Tipp: OPs im **Kreativmodus** sind vom Block-/Inventarschutz ausgenommen – zum Bauen also vorher `/mm leave` oder `/gamemode creative`.
+- `vote-options`: wie viele Maps zur Abstimmung stehen (Standard 3)
+- `avoid-repeat: true`: nie zweimal hintereinander dieselbe Map, auch nicht über einen Neustart hinweg
+
+Wer eine ältere Version benutzt hat: Bisherige Maps aus der `maps.yml` bzw. die alte Arena aus der `config.yml` werden beim Start automatisch als Dateien in `arenas/` übernommen.
+
+### Allgemein
+
+Für alle Spieler: `/mm join`, `/mm leave`, `/mm vote`, `/stats [Spieler]`. Alle `/mm`-Befehle lassen sich mit **Tab** vervollständigen, auch Map-Namen, Spieler und Spawn-Nummern.
+
+**Items in der Lobby-Hotbar** (Rechtsklick benutzt sie):
+
+| Platz | Item | Funktion |
+|---|---|---|
+| 1 | Karte „Map-Info“ | Zeigt die nächste Map mit Beschreibung und Erbauer, bzw. den Stand der Abstimmung |
+| 5 | Papier „Map-Abstimmung“ | Öffnet das Abstimmungs-Menü (nur im Abstimmungs-Modus mit mehreren Maps) |
+| 9 | Eigener Kopf „Deine Stats“ | Öffnet das Stats-Menü (nur mit verbundener Datenbank) |
+
+Die Plätze stellst du in der `config.yml` unter `lobby-items` ein. `0` schaltet ein Item aus.
+
+Beim Rundenstart bekommt **jeder Spieler einen eigenen Spawn** (zufällig verteilt). Gibt es weniger Spawns als Spieler, teilen sich einige einen. `/mm info` weist darauf hin.
+
+Tipp: OPs im **Kreativmodus** sind vom Block- und Inventarschutz ausgenommen. Zum Bauen also vorher `/mm leave` oder `/gamemode creative`.
 
 ## 5. Spielablauf
 
 - Ab `min-players` (Standard 4) startet ein 30-Sekunden-Countdown, bei voller Runde 10 Sekunden.
 - Rollen werden zufällig verteilt: standardmäßig **1 Mörder**, **1 Detektiv**, der Rest **Unschuldige** (Anzahl einstellbar, siehe unten). Namensschilder sind versteckt.
 - Nach 10 Sekunden bekommen Mörder (Messer) und Detektiv (Bogen) ihre Waffen.
-- **Mörder:** Linksklick = erstechen, Rechtsklick = Messer werfen (5 s Abklingzeit).
-- **Detektiv:** Bogen, nach jedem Schuss kommt nach 5 s ein neuer Pfeil.
+- **Mörder:** Linksklick = erstechen, Rechtsklick = Messer werfen. Das Messer kommt zurück ins Inventar, sobald es gelandet ist (Wand, Reichweite oder Treffer). Danach kann man es erst nach der Abklingzeit (Standard 5 s) wieder werfen. Über der Hotbar läuft dafür ein Balken mit Restzeit, am Ende steht „Messer-Wurf bereit“.
+- **Detektiv:** Bogen. Nach jedem Schuss lädt er nach (Standard 5 s). Über der Hotbar läuft ein Balken mit Restzeit, am Ende steht „Bogen geladen“. Auf dem Bogen selbst ist die Abklingzeit ebenfalls zu sehen.
 - **Gold:** erscheint an den Gold-Spawns. Standardmäßig gibt es für 10 Gold Bogen + 1 Pfeil (jede weiteren 10 Gold = 1 Pfeil). Pro Rolle einstellbar in `gold-rewards.yml`.
 - Stirbt der Detektiv, fällt sein Bogen auf den Boden – jeder Unschuldige kann ihn aufheben (nicht der Mörder).
 - Erschießt ein Unschuldiger einen anderen Unschuldigen, sterben **beide**.
@@ -70,11 +209,13 @@ Tipp: OPs im **Kreativmodus** sind vom Block-/Inventarschutz ausgenommen – zum
 
 ## 6. Einstellungen
 
-Im Ordner `plugins/MurderMystery/` liegen fünf Dateien:
+Im Ordner `plugins/MurderMystery/` liegen diese Dateien:
 
 | Datei | Inhalt |
 |---|---|
-| `config.yml` | Allgemeines: Auto-Join, Spielerzahlen, Zeiten, Lobby, Arena-Punkte |
+| `config.yml` | Allgemeines: Auto-Join, Spielerzahlen, Zeiten, globale Wartelobby, Lobby-Items |
+| `maps.yml` | Wie die Map gewählt wird (Abstimmung / Zufall) |
+| `arenas/*.yml` | Eine Datei pro Map: Welt, Lobby, Spielbereich, Spieler- und Gold-Spawns |
 | `roles.yml` | Alle Rollen (auch eigene), Teams und die Anzeige der Wahrscheinlichkeiten |
 | `gold.yml` | Wie und wo Gold erscheint |
 | `gold-rewards.yml` | Was jede Rolle für ihr Gold bekommt |
@@ -144,7 +285,7 @@ Was jede Rolle einstellen kann:
 
 Die Rollen werden in der Reihenfolge aus der Datei vergeben. Mehrere Spieler im Team `MURDERER` kennen sich gegenseitig und können sich nicht töten. Tötet ein Unschuldiger einen anderen Unschuldigen, stirbt er mit, außer `team-kill-kills-shooter: false` ist gesetzt.
 
-**Wahrscheinlichkeits-Anzeige:** In der Lobby zeigt das Scoreboard unter „Deine Chancen“, mit welcher Wahrscheinlichkeit man welche Rolle bekommt, abhängig von der aktuellen Spielerzahl. Für alle Rollen abschalten mit `show-chances: false` ganz oben in der `roles.yml`. Für einzelne Rollen geht das mit `show-chance: false`.
+**Wahrscheinlichkeits-Anzeige:** In der Lobby sieht jeder Spieler oben am Bildschirm **eine Bossbar pro Rolle**, z. B. „Deine Chance auf Mörder: 25 %“, in der Farbe der Rolle. Die Chance hängt von der aktuellen Spielerzahl ab. Mit `chance-display` in der `roles.yml` wählst du `BOSSBAR` (Standard), `SCOREBOARD` oder `BOTH`. Für alle Rollen abschalten mit `show-chances: false`, für einzelne Rollen mit `show-chance: false`.
 
 ### Gold (`gold.yml`)
 

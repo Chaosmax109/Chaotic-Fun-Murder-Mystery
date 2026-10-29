@@ -1,0 +1,40 @@
+# ===============================
+#   Murder Mystery – Arena (Map)
+# ===============================
+# Diese Datei beschreibt eine Map. Alles kannst du hier direkt eintragen
+# oder im Spiel setzen: /mm addspawn, /mm addgold, /mm map setlobby, /mm map area – oder im Menü /mm maps.
+# Positionen: "x y z" oder "x y z yaw pitch" (yaw/pitch = Blickrichtung), immer in der Welt dieser Map.
+# Nach Änderungen: /mm reload
+
+# Anzeigename in Abstimmung, Scoreboard und Map-Info (Farbcodes mit &)
+name: "Arena"
+# Welt der Map: ein Welt-Ordner hier im arenas-Ordner (z. B. "Dam")
+# oder der Name einer Welt, die schon auf dem Server liegt (z. B. "world").
+world: ""
+# false = Map wird nicht gespielt
+enabled: true
+# Item im Abstimmungs- und Map-Menü
+icon: FILLED_MAP
+description: ""
+author: ""
+
+lobby:
+  # GLOBAL = globale Lobby aus der config.yml
+  # OWN    = eigene Lobby dieser Map (location unten). Sie wird genutzt, sobald feststeht, dass diese Map als Nächstes kommt.
+  mode: GLOBAL
+  location: ""
+  # Lobby-Bereich: Wartende Spieler, die sich weiter als so viele Blöcke entfernen, werden zurückgeholt (0 = aus)
+  radius: 15
+
+# Spielbereich (Größe der Map): Wer ihn während der Runde verlässt, wird zu einem Spawn zurückteleportiert.
+area:
+  enabled: false
+  # zwei gegenüberliegende Ecken, z. B. "-20 -64 -20" und "20 100 20"
+  corner1: ""
+  corner2: ""
+
+# Spieler-Spawns – am besten so viele wie max-players in der config.yml
+spawns: []
+
+# Punkte, an denen Gold erscheint
+gold: []

@@ -28,10 +28,18 @@ lobby:
   # wird er zurückteleportiert (damit niemand vor Rundenstart auf die Map läuft). 0 = aus.
   max-distance: 40
 
-# Rollen: roles.yml – Gold: gold.yml (beide im selben Ordner)
+# Items in der Hotbar der Wartelobby (Rechtsklick benutzt sie).
+# Platz 1–9 wie im Spiel, 0 = Item ausschalten.
+lobby-items:
+  # Papier: Map-Abstimmung (nur im Abstimmungs-Modus mit mehreren Maps)
+  vote-slot: 5
+  # Kopf: eigene Statistiken (nur wenn die Datenbank verbunden ist)
+  stats-slot: 9
+  # Karte: Infos zur nächsten Map bzw. zur laufenden Abstimmung
+  map-info-slot: 1
 
-# Wird per Befehl gesetzt (/mm setlobby, /mm addspawn, /mm addgold).
+# Weitere Einstellungen: roles.yml, gold.yml, gold-rewards.yml, database.yml – Maps: maps.yml
+
+# Die allgemeine Wartelobby für alle Maps. Wird per /mm setlobby gesetzt.
 arena:
   lobby: ""
-  spawns: []
-  gold: []

@@ -13,7 +13,10 @@ Ein Spieler ist der **Mörder**, einer der **Detektiv**, alle anderen sind **uns
 - Wer einen Unschuldigen erschießt, stirbt mit
 - Versteckte Namensschilder, Scoreboard mit Rolle, Zeit und Überlebenden
 - Tote werden Zuschauer mit eigenem Chat
-- Automatische Lobby mit Countdown, die nächste Runde startet von selbst. Die Lobby kann in derselben Welt wie die Map liegen.
+- Automatische Lobby mit Countdown, die nächste Runde startet von selbst
+- **Mehrere Maps** mit allgemeiner Wartelobby: Map-Abstimmung in der Lobby, zufällige Map pro Runde oder pro Serverstart. Map-Welten werden automatisch geladen.
+- **Maps im Ordner `arenas/`**: Welt-Ordner oder ZIP hochladen, je Map eine `.yml` mit Welt, Lobby (global/eigene), Spielbereich, Spieler- und Gold-Spawns; Map-Menü `/mm maps`; Standard-Map wird beim ersten Start erzeugt
+- Lobby-Hotbar mit Map-Info, Map-Abstimmung und Stats; Tab-Vervollständigung für alle Befehle
 - Eigener Spawnpunkt für jeden Spieler beim Rundenstart, Spawns per Befehl verwalten
 - Rollen in eigener `roles.yml`: eigene Rollen hinzufügen (Team, Waffe, Effekte), Anzahl, Texte, Abklingzeiten
 - Drei Teams: Mörder, Unschuldige und **Neutral** (gewinnt, wenn er überlebt)
@@ -28,7 +31,7 @@ Die fertigen Plugin-Dateien gibt es unter [Releases](../../releases):
 
 | Datei | Server |
 |---|---|
-| `MurderMystery-2.2.1.jar` | Paper 26.2, Java 25 (aktuell) |
+| `MurderMystery-2.3.0.jar` | Paper 26.2, Java 25 (aktuell) |
 | `MurderMystery-26.2.jar` | Paper 26.2, Java 25 (Version 2.0.0) |
 | `MurderMystery-1.8.8.jar` | Spigot/Paper 1.8.8, Java 8 (ältere Version) |
 
@@ -36,7 +39,7 @@ Die fertigen Plugin-Dateien gibt es unter [Releases](../../releases):
 
 Server aufsetzen, Arena einrichten und alle Befehle: siehe [ANLEITUNG.md](ANLEITUNG.md).
 
-Kurz: `/mm setlobby`, mehrmals `/mm addspawn` und `/mm addgold` – fertig.
+Kurz: `/mm setlobby`, `/mm map create <name>`, dann auf der Map mehrmals `/mm addspawn` und `/mm addgold` – fertig. Beim ersten Start wird automatisch eine spielbare Standard-Map erzeugt.
 
 ## Selbst bauen
 
@@ -49,4 +52,3 @@ mvn package
 
 Die Datei liegt danach unter `MurderMystery/target/MurderMystery.jar`.
 
-`test-server.ps1` startet einen lokalen Paper-Testserver (Windows), wenn unter `%LOCALAPPDATA%\Temp\mmbuild` ein Server und ein JDK 25 liegen.

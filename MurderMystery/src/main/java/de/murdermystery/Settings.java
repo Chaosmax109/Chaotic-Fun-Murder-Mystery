@@ -140,10 +140,16 @@ public class Settings {
     public final int gameDuration;
     public final String serverName;
     public final int lobbyMaxDistance;
+    /** Hotbar-Plätze (0–8) der Lobby-Items, -1 = aus. */
+    public final int voteItemSlot;
+    public final int statsItemSlot;
+    public final int mapInfoItemSlot;
 
     public final boolean teamKillKillsShooter;
     public final boolean neutralKillKillsShooter;
     public final boolean showChances;
+    /** Wo die Chancen angezeigt werden: BOSSBAR, SCOREBOARD oder BOTH. */
+    public final String chanceDisplay;
     /** Alle Rollen außer "innocent", in der Reihenfolge aus roles.yml. */
     public final List<Role> specialRoles;
     /** Die Rolle "innocent" für alle übrigen Spieler. */
@@ -173,10 +179,16 @@ public class Settings {
         gameDuration = Math.max(10, c.getInt("game-duration", 270));
         serverName = Util.color(c.getString("server-name", "&edein-server.de"));
         lobbyMaxDistance = Math.max(0, c.getInt("lobby.max-distance", 40));
+        // In der config.yml zählen die Plätze wie im Spiel von 1 bis 9, intern 0–8
+        voteItemSlot = c.getInt("lobby-items.vote-slot", 5) - 1;
+        statsItemSlot = c.getInt("lobby-items.stats-slot", 9) - 1;
+        mapInfoItemSlot = c.getInt("lobby-items.map-info-slot", 1) - 1;
 
         teamKillKillsShooter = roles.getBoolean("team-kill-kills-shooter", true);
         neutralKillKillsShooter = roles.getBoolean("neutral-kill-kills-shooter", false);
         showChances = roles.getBoolean("show-chances", true);
+        String display = roles.getString("chance-display", "BOSSBAR").toUpperCase(Locale.ROOT);
+        chanceDisplay = display.equals("SCOREBOARD") || display.equals("BOTH") ? display : "BOSSBAR";
         List<Role> special = new ArrayList<>();
         Role filler = null;
         ConfigurationSection section = roles.getConfigurationSection("roles");

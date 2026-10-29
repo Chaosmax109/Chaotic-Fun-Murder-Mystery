@@ -17,6 +17,7 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
@@ -30,6 +31,7 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.projectiles.ProjectileSource;
 
 public class GameListener implements Listener {
@@ -48,8 +50,10 @@ public class GameListener implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
+        Player p = e.getPlayer();
+        // Ohne gesetzte Lobby wird die Spawn-Position des ersten Spielers zur globalen Lobby
+        game.ensureLobby(p);
         if (plugin.settings().autoJoin) {
-            Player p = e.getPlayer();
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (p.isOnline()) game.join(p);
             }, 2L);
@@ -107,6 +111,18 @@ public class GameListener implements Listener {
             return;
         }
         if (e.getHand() != EquipmentSlot.HAND) return; // Event kommt sonst für Haupt- und Nebenhand doppelt
+        String lobbyItem = game.lobbyItemType(e.getItem());
+        if (lobbyItem != null) {
+            e.setCancelled(true);
+            switch (lobbyItem) {
+                case "vote" -> game.openVoteMenu(p);
+                case "stats" -> plugin.openStats(p, null);
+                case "mapinfo" -> game.showMapInfo(p);
+                default -> {
+                }
+            }
+            return;
+        }
         if ((e.getAction() == Action.RIGHT_CLICK_AIR || e.getAction() == Action.RIGHT_CLICK_BLOCK)
                 && game.isKnife(p, e.getItem())) {
             e.setCancelled(true);
@@ -132,6 +148,7 @@ public class GameListener implements Listener {
             return;
         }
         game.checkLobbyBounds(p);
+        game.checkArenaBounds(p);
     }
 
     @EventHandler
@@ -175,6 +192,25 @@ public class GameListener implements Listener {
 
     @EventHandler
     public void onInventory(InventoryClickEvent e) {
+        if (e.getView().getTopInventory().getHolder() instanceof MapAdminMenu menu) {
+            e.setCancelled(true);
+            if (e.getWhoClicked() instanceof Player p && e.getClickedInventory() == e.getView().getTopInventory()
+                    && p.hasPermission("mm.admin")) {
+                menu.click(p, e.getSlot(), e.getClick());
+            }
+            return;
+        }
+        if (e.getView().getTopInventory().getHolder() instanceof VoteMenu menu) {
+            e.setCancelled(true);
+            if (e.getWhoClicked() instanceof Player p && e.getClickedInventory() == e.getView().getTopInventory()) {
+                MapManager.GameMap m = menu.mapAt(e.getSlot());
+                if (m != null) {
+                    game.vote(p, m);
+                    menu.render(p);
+                }
+            }
+            return;
+        }
         if (e.getView().getTopInventory().getHolder() instanceof StatsMenu
                 || (e.getWhoClicked() instanceof Player p && protectedPlayer(p))) {
             e.setCancelled(true);
@@ -183,7 +219,16 @@ public class GameListener implements Listener {
 
     @EventHandler
     public void onInventoryDrag(InventoryDragEvent e) {
-        if (e.getView().getTopInventory().getHolder() instanceof StatsMenu) e.setCancelled(true);
+        InventoryHolder holder = e.getView().getTopInventory().getHolder();
+        if (holder instanceof StatsMenu || holder instanceof VoteMenu || holder instanceof MapAdminMenu) e.setCancelled(true);
+    }
+
+    /** Keine Monster und Tiere, die von selbst in den Map-Welten auftauchen. */
+    @EventHandler
+    public void onCreatureSpawn(CreatureSpawnEvent e) {
+        if (e.getSpawnReason() == CreatureSpawnEvent.SpawnReason.NATURAL && plugin.maps().isMapWorld(e.getLocation().getWorld())) {
+            e.setCancelled(true);
+        }
     }
 
     @EventHandler

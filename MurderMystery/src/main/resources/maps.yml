@@ -1,0 +1,23 @@
+# ===============================
+#   Murder Mystery – Map-Auswahl
+# ===============================
+# Die Maps selbst liegen im Ordner plugins/MurderMystery/arenas/:
+#   - je Map eine .yml-Datei (Name, Welt, Lobby, Spielbereich, Spieler- und Gold-Spawns)
+#   - daneben die Welt-Ordner der Maps (oder ZIP-Dateien, die beim Import entpackt werden)
+# Hier steht nur, WIE die Map für eine Runde ausgewählt wird.
+# Nach Änderungen: /mm reload
+
+# Wie die Map für eine Runde ausgewählt wird:
+#   VOTE              – die Spieler stimmen in der Lobby ab (Item in der Hotbar oder /mm vote)
+#   RANDOM_EACH_ROUND – jede Runde eine zufällige Map
+#   RANDOM_ON_START   – bei jedem Serverstart eine zufällige Map, die bis zum nächsten Neustart bleibt
+mode: VOTE
+
+# Wie viele Maps bei der Abstimmung zur Wahl stehen (zufällig ausgewählt)
+vote-options: 3
+
+# Nicht zweimal hintereinander dieselbe Map (auch über Neustarts hinweg)
+avoid-repeat: true
+
+# Wird automatisch gesetzt (zuletzt gespielte Map)
+last-map: null
