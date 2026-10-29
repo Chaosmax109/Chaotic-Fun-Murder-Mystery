@@ -39,6 +39,10 @@ public class MapManager {
         public final List<String> gold = new ArrayList<>();
         /** Eigene Wartelobby dieser Map ("" = keine, dann gilt die globale Lobby). */
         public String lobby = "";
+        /** Kurze Beschreibung für Map-Info und Abstimmung (optional). */
+        public String description = "";
+        /** Erbauer der Map (optional). */
+        public String author = "";
 
         GameMap(String key, String displayName, String world) {
             this.key = key;
@@ -110,6 +114,8 @@ public class MapManager {
                 m.spawns.addAll(s.getStringList("spawns"));
                 m.gold.addAll(s.getStringList("gold"));
                 m.lobby = s.getString("lobby", "");
+                m.description = Util.color(s.getString("description", ""));
+                m.author = s.getString("author", "");
                 maps.put(m.key, m);
             }
         }
@@ -152,6 +158,8 @@ public class MapManager {
             yml.set(base + "enabled", m.enabled);
             yml.set(base + "icon", m.icon.name());
             yml.set(base + "lobby", m.lobby);
+            yml.set(base + "description", m.description.replace('§', '&'));
+            yml.set(base + "author", m.author);
             yml.set(base + "spawns", new ArrayList<>(m.spawns));
             yml.set(base + "gold", new ArrayList<>(m.gold));
         }
@@ -169,9 +177,9 @@ public class MapManager {
     /** Lädt die Welten aller aktivierten Maps (einmal nach dem Serverstart). */
     public void loadWorlds() {
         for (GameMap m : maps.values()) {
-            if (m.enabled && loadWorld(m.world) == null) {
-                plugin.getLogger().warning("Map '" + m.key + "': Welt '" + m.world + "' wurde nicht gefunden – lege den Welt-Ordner in den Server-Ordner.");
-            }
+            if (m.enabled) loadWorld(m.world);
+            String problem = problem(m);
+            plugin.getLogger().info("Map '" + m.key + "': " + (problem == null ? "spielbar" : "NICHT spielbar – " + problem));
         }
         if (mode == Mode.RANDOM_ON_START && (startMap == null || !startMap.playable())) {
             startMap = pickRandom(playableMaps());
@@ -199,12 +207,25 @@ public class MapManager {
      * Gibt es die Welt auf der Festplatte? Neue Welt-Ordner liegen erst im Server-Ordner; Paper (ab 26.x) verschiebt sie
      * beim ersten Laden in den Haupt-Weltordner nach {@code <welt>/dimensions/minecraft/<name>}.
      */
-    private boolean worldExists(String name) {
+    public boolean worldExists(String name) {
         File container = Bukkit.getWorldContainer();
         if (new File(container, name).isDirectory()) return true;
         String mainWorld = Bukkit.getWorlds().isEmpty() ? "world" : Bukkit.getWorlds().get(0).getName();
-        return new File(container, mainWorld + File.separator + "dimensions" + File.separator + "minecraft"
-                + File.separator + name.toLowerCase(Locale.ROOT)).isDirectory();
+        File[] namespaces = new File(container, mainWorld + File.separator + "dimensions").listFiles(File::isDirectory);
+        if (namespaces == null) return false;
+        for (File ns : namespaces) {
+            if (new File(ns, name.toLowerCase(Locale.ROOT)).isDirectory()) return true;
+        }
+        return false;
+    }
+
+    /** Warum ist die Map nicht spielbar? null = spielbar. Lädt die Welt bei Bedarf nach. */
+    public String problem(GameMap m) {
+        if (!m.enabled) return "deaktiviert (/mm map enable " + m.key + ")";
+        if (loadWorld(m.world) == null) return "Welt '" + m.world + "' nicht gefunden (Ordner fehlt im Server-Ordner)";
+        if (m.spawns.isEmpty()) return "keine Spieler-Spawns (/mm addspawn in der Map)";
+        if (m.spawnLocations().isEmpty()) return "die Spawns liegen in einer anderen, nicht geladenen Welt (" + m.spawns.get(0).split(";")[0] + ")";
+        return null;
     }
 
     // ------------------------------------------------------------------ Lobby
@@ -249,6 +270,15 @@ public class MapManager {
         return mode;
     }
 
+    public void setMode(Mode m) {
+        mode = m;
+        yml.set("mode", m.name());
+        if (m == Mode.RANDOM_ON_START && (startMap == null || !startMap.playable())) {
+            startMap = pickRandom(playableMaps());
+        }
+        save();
+    }
+
     public int voteOptionCount() {
         return voteOptions;
     }
@@ -264,7 +294,7 @@ public class MapManager {
     public List<GameMap> playableMaps() {
         List<GameMap> list = new ArrayList<>();
         for (GameMap m : maps.values()) {
-            if (m.playable() && Bukkit.getWorld(m.world) != null) list.add(m);
+            if (m.playable() && problem(m) == null) list.add(m);
         }
         return list;
     }

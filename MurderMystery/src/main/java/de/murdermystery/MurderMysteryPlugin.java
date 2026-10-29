@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -25,6 +26,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
     private Settings settings;
     private StatsManager stats;
     private MapManager maps;
+    private MapImporter importer;
     private Game game;
 
     @Override
@@ -34,13 +36,19 @@ public class MurderMysteryPlugin extends JavaPlugin {
         loadSettings();
         maps = new MapManager(this);
         maps.load();
+        importer = new MapImporter(this, maps);
+        importer.prepareFolder();
         game = new Game(this, maps);
         game.startTasks();
         getServer().getPluginManager().registerEvents(new GameListener(this, game), this);
+        CommandTabCompleter completer = new CommandTabCompleter(this);
+        getCommand("mm").setTabCompleter(completer);
+        getCommand("stats").setTabCompleter(completer);
 
         // Welten erst laden, wenn der Server fertig gestartet ist
         Bukkit.getScheduler().runTask(this, () -> {
             maps.loadWorlds();
+            importer.importAll(null); // neu hochgeladene Maps aus plugins/MurderMystery/upload/
             game.newVoteRound();
             if (maps.playableMaps().isEmpty()) {
                 getLogger().warning("Noch nicht eingerichtet: mindestens eine Map mit Spawns (/mm map create, /mm addspawn).");
@@ -138,6 +146,14 @@ public class MurderMysteryPlugin extends JavaPlugin {
         return maps;
     }
 
+    public MapImporter importer() {
+        return importer;
+    }
+
+    public Game game() {
+        return game;
+    }
+
     // ------------------------------------------------------------------ Befehle
 
     @Override
@@ -151,11 +167,14 @@ public class MurderMysteryPlugin extends JavaPlugin {
                 game.refreshLobby();
             } else if (args.length >= 2 && args[0].equalsIgnoreCase("map") && args[1].equalsIgnoreCase("list")) {
                 for (GameMap m : maps.all().values()) {
-                    sender.sendMessage(m.key + " (Welt " + m.world + "): " + (m.playable() ? "spielbar" : "nicht spielbar")
+                    String problem = maps.problem(m);
+                    sender.sendMessage(m.key + " (Welt " + m.world + "): " + (problem == null ? "spielbar" : "NICHT spielbar – " + problem)
                             + ", " + m.spawns.size() + " Spawns, " + m.gold.size() + " Gold, Lobby: " + (m.lobby.isEmpty() ? "global" : "eigene"));
                 }
+            } else if (args.length >= 2 && args[0].equalsIgnoreCase("map") && args[1].equalsIgnoreCase("import")) {
+                importer.importAll(sender);
             } else {
-                sender.sendMessage("Aus der Konsole gehen nur: mm map testmap, mm map list");
+                sender.sendMessage("Aus der Konsole gehen nur: mm map testmap, mm map list, mm map import");
             }
             return true;
         }
@@ -212,7 +231,8 @@ public class MurderMysteryPlugin extends JavaPlugin {
                     p.teleport(lobby);
                 }
             }
-            case "map", "maps" -> mapCommand(p, args);
+            case "maps" -> MapAdminMenu.openOverview(this, p);
+            case "map" -> mapCommand(p, args);
             case "addspawn", "addgold", "spawns", "golds", "removespawn", "removegold",
                  "tpspawn", "tpgold", "clearspawns", "cleargold" -> pointCommand(p, sub, args);
             case "start" -> game.forceStart(p);
@@ -249,11 +269,8 @@ public class MurderMysteryPlugin extends JavaPlugin {
         if (action.equals("list")) {
             p.sendMessage(Util.PREFIX + ChatColor.YELLOW + "Maps (" + maps.all().size() + ") – Modus " + maps.mode() + ":");
             for (GameMap m : maps.all().values()) {
-                String status;
-                if (!m.enabled) status = ChatColor.RED + "deaktiviert";
-                else if (Bukkit.getWorld(m.world) == null) status = ChatColor.RED + "Welt fehlt";
-                else if (m.spawns.isEmpty()) status = ChatColor.GOLD + "keine Spawns";
-                else status = ChatColor.GREEN + "spielbar";
+                String problem = maps.problem(m);
+                String status = problem == null ? ChatColor.GREEN + "spielbar" : ChatColor.RED + "NICHT spielbar: " + problem;
                 p.sendMessage(ChatColor.GRAY + " " + m.key + ChatColor.DARK_GRAY + " (" + m.displayName + ChatColor.DARK_GRAY + ", Welt " + m.world + ") "
                         + status + ChatColor.GRAY + " – " + m.spawns.size() + " Spawns, " + m.gold.size() + " Gold, Lobby: "
                         + (m.lobby.isEmpty() ? "global" : "eigene"));
@@ -262,6 +279,14 @@ public class MurderMysteryPlugin extends JavaPlugin {
         }
         if (action.equals("help")) {
             sendMapHelp(p);
+            return;
+        }
+        if (action.equals("gui") || action.equals("menu")) {
+            MapAdminMenu.openOverview(this, p);
+            return;
+        }
+        if (action.equals("import")) {
+            importer.importAll(p);
             return;
         }
         if (action.equals("testmap")) {
@@ -308,7 +333,23 @@ public class MurderMysteryPlugin extends JavaPlugin {
             p.sendMessage(Util.PREFIX + ChatColor.RED + "Keine Map mit dem Namen '" + name + "'. Liste: /mm map list");
             return;
         }
+        String rest = args.length > 3 ? String.join(" ", Arrays.copyOfRange(args, 3, args.length)) : "";
         switch (action) {
+            case "edit" -> MapAdminMenu.openEditor(this, p, m);
+            case "rename", "description", "author" -> {
+                if (action.equals("rename") && rest.isEmpty()) {
+                    p.sendMessage(Util.PREFIX + ChatColor.RED + "Bitte einen Namen angeben: /mm map rename " + m.key + " <Anzeigename>");
+                    return;
+                }
+                switch (action) {
+                    case "rename" -> m.displayName = Util.color(rest);
+                    case "description" -> m.description = Util.color(rest);
+                    default -> m.author = rest;
+                }
+                maps.save();
+                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Gespeichert." + ChatColor.DARK_GRAY + " (Map " + m.key + ")");
+                game.refreshLobby();
+            }
             case "delete" -> {
                 maps.delete(m.key);
                 p.sendMessage(Util.PREFIX + "Map '" + m.key + "' gelöscht (die Welt selbst bleibt erhalten).");
@@ -407,7 +448,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
         }
     }
 
-    private void openStats(Player p, String name) {
+    public void openStats(Player p, String name) {
         if (!stats.isEnabled()) {
             p.sendMessage(Util.PREFIX + ChatColor.RED + "Statistiken sind deaktiviert (keine Datenbank verbunden).");
             return;
@@ -475,7 +516,8 @@ public class MurderMysteryPlugin extends JavaPlugin {
         p.sendMessage(ChatColor.YELLOW + "/stats [Spieler]" + ChatColor.GRAY + " – Statistiken anzeigen");
         if (!admin) return;
         p.sendMessage(ChatColor.YELLOW + "/mm setlobby | tplobby [map]" + ChatColor.GRAY + " – globale Lobby setzen / zu einer Lobby teleportieren");
-        p.sendMessage(ChatColor.YELLOW + "/mm map ..." + ChatColor.GRAY + " – Maps verwalten (/mm map help)");
+        p.sendMessage(ChatColor.YELLOW + "/mm maps" + ChatColor.GRAY + " – Map-Menü (Maps verwalten, importieren, Modus)");
+        p.sendMessage(ChatColor.YELLOW + "/mm map ..." + ChatColor.GRAY + " – Maps per Befehl verwalten (/mm map help)");
         p.sendMessage(ChatColor.YELLOW + "/mm addspawn | addgold" + ChatColor.GRAY + " – Spieler-/Gold-Spawn in der Map, in der du stehst");
         p.sendMessage(ChatColor.YELLOW + "/mm spawns | tpspawn <nr> | removespawn <nr>" + ChatColor.GRAY + " – Spawns verwalten");
         p.sendMessage(ChatColor.YELLOW + "/mm golds | tpgold <nr> | removegold <nr>" + ChatColor.GRAY + " – Gold-Spawns verwalten");
@@ -488,7 +530,10 @@ public class MurderMysteryPlugin extends JavaPlugin {
         p.sendMessage(ChatColor.DARK_RED + "" + ChatColor.BOLD + "Maps");
         p.sendMessage(ChatColor.YELLOW + "/mm map list" + ChatColor.GRAY + " – alle Maps mit Status");
         p.sendMessage(ChatColor.YELLOW + "/mm map create <name> [weltordner]" + ChatColor.GRAY + " – Map anlegen (ohne Weltordner: aktuelle Welt)");
+        p.sendMessage(ChatColor.YELLOW + "/mm maps" + ChatColor.GRAY + " – Menü zum Verwalten aller Maps");
+        p.sendMessage(ChatColor.YELLOW + "/mm map import" + ChatColor.GRAY + " – hochgeladene Maps aus plugins/MurderMystery/upload/ importieren");
         p.sendMessage(ChatColor.YELLOW + "/mm map testmap" + ChatColor.GRAY + " – fertige Test-Map (Flachwelt mit Arena und Lobby) erzeugen");
+        p.sendMessage(ChatColor.YELLOW + "/mm map rename | description | author <name> <text>" + ChatColor.GRAY + " – Anzeigename, Beschreibung, Erbauer");
         p.sendMessage(ChatColor.YELLOW + "/mm map tp <name>" + ChatColor.GRAY + " – zur Map teleportieren");
         p.sendMessage(ChatColor.YELLOW + "/mm map enable | disable <name>" + ChatColor.GRAY + " – Map an-/ausschalten");
         p.sendMessage(ChatColor.YELLOW + "/mm map setlobby [name]" + ChatColor.GRAY + " – eigene Wartelobby für diese Map setzen");

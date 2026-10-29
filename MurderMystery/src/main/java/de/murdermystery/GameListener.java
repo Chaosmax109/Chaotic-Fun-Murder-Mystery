@@ -111,9 +111,16 @@ public class GameListener implements Listener {
             return;
         }
         if (e.getHand() != EquipmentSlot.HAND) return; // Event kommt sonst für Haupt- und Nebenhand doppelt
-        if (game.isVoteItem(e.getItem())) {
+        String lobbyItem = game.lobbyItemType(e.getItem());
+        if (lobbyItem != null) {
             e.setCancelled(true);
-            game.openVoteMenu(p);
+            switch (lobbyItem) {
+                case "vote" -> game.openVoteMenu(p);
+                case "stats" -> plugin.openStats(p, null);
+                case "mapinfo" -> game.showMapInfo(p);
+                default -> {
+                }
+            }
             return;
         }
         if ((e.getAction() == Action.RIGHT_CLICK_AIR || e.getAction() == Action.RIGHT_CLICK_BLOCK)
@@ -184,6 +191,14 @@ public class GameListener implements Listener {
 
     @EventHandler
     public void onInventory(InventoryClickEvent e) {
+        if (e.getView().getTopInventory().getHolder() instanceof MapAdminMenu menu) {
+            e.setCancelled(true);
+            if (e.getWhoClicked() instanceof Player p && e.getClickedInventory() == e.getView().getTopInventory()
+                    && p.hasPermission("mm.admin")) {
+                menu.click(p, e.getSlot(), e.getClick());
+            }
+            return;
+        }
         if (e.getView().getTopInventory().getHolder() instanceof VoteMenu menu) {
             e.setCancelled(true);
             if (e.getWhoClicked() instanceof Player p && e.getClickedInventory() == e.getView().getTopInventory()) {
@@ -204,7 +219,7 @@ public class GameListener implements Listener {
     @EventHandler
     public void onInventoryDrag(InventoryDragEvent e) {
         InventoryHolder holder = e.getView().getTopInventory().getHolder();
-        if (holder instanceof StatsMenu || holder instanceof VoteMenu) e.setCancelled(true);
+        if (holder instanceof StatsMenu || holder instanceof VoteMenu || holder instanceof MapAdminMenu) e.setCancelled(true);
     }
 
     /** Keine Monster und Tiere, die von selbst in den Map-Welten auftauchen. */

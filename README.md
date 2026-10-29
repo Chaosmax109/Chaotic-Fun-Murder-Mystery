@@ -15,6 +15,8 @@ Ein Spieler ist der **Mörder**, einer der **Detektiv**, alle anderen sind **uns
 - Tote werden Zuschauer mit eigenem Chat
 - Automatische Lobby mit Countdown, die nächste Runde startet von selbst
 - **Mehrere Maps** mit allgemeiner Wartelobby: Map-Abstimmung in der Lobby, zufällige Map pro Runde oder pro Serverstart. Map-Welten werden automatisch geladen.
+- **Maps hochladen** (Ordner oder ZIP nach `plugins/MurderMystery/upload/`) und im **Map-Menü** `/mm maps` einrichten; fertige Test-Map per `/mm map testmap`
+- Lobby-Hotbar mit Map-Info, Map-Abstimmung und Stats; Tab-Vervollständigung für alle Befehle
 - Eigener Spawnpunkt für jeden Spieler beim Rundenstart, Spawns per Befehl verwalten
 - Rollen in eigener `roles.yml`: eigene Rollen hinzufügen (Team, Waffe, Effekte), Anzahl, Texte, Abklingzeiten
 - Drei Teams: Mörder, Unschuldige und **Neutral** (gewinnt, wenn er überlebt)

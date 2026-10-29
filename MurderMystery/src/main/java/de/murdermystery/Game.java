@@ -87,7 +87,7 @@ public class Game {
     private final List<GameMap> voteOptions = new ArrayList<>();
     /** Spieler → Schlüssel der gewählten Map. */
     private final Map<UUID, String> votes = new HashMap<>();
-    private final NamespacedKey voteItemKey;
+    private final NamespacedKey lobbyItemKey;
 
     private BukkitTask ticker;
     private BukkitTask fastTicker;
@@ -95,7 +95,7 @@ public class Game {
     public Game(MurderMysteryPlugin plugin, MapManager maps) {
         this.plugin = plugin;
         this.maps = maps;
-        this.voteItemKey = new NamespacedKey(plugin, "vote_item");
+        this.lobbyItemKey = new NamespacedKey(plugin, "lobby_item");
     }
 
     private Settings s() {
@@ -158,7 +158,7 @@ public class Game {
         prepare(p, GameMode.ADVENTURE);
         p.teleport(maps.currentLobby());
         if (voteOptions.isEmpty() && maps.mode() == MapManager.Mode.VOTE) newVoteRound();
-        giveVoteItem(p);
+        giveLobbyItems(p);
         broadcast(ChatColor.YELLOW + p.getName() + ChatColor.GRAY + " ist beigetreten ("
                 + ChatColor.GREEN + players.size() + ChatColor.GRAY + "/" + ChatColor.GREEN + s().maxPlayers + ChatColor.GRAY + ")");
         updateBoards();
@@ -310,18 +310,73 @@ public class Game {
         return best.isEmpty() ? null : best.get(random.nextInt(best.size()));
     }
 
-    public boolean isVoteItem(ItemStack it) {
-        return it != null && it.hasItemMeta()
-                && it.getItemMeta().getPersistentDataContainer().has(voteItemKey, PersistentDataType.BYTE);
+    // ------------------------------------------------------------------ Lobby-Items
+
+    /** Welches Lobby-Item ist das? "vote", "stats", "mapinfo" oder null. */
+    public String lobbyItemType(ItemStack it) {
+        if (it == null || !it.hasItemMeta()) return null;
+        return it.getItemMeta().getPersistentDataContainer().get(lobbyItemKey, PersistentDataType.STRING);
     }
 
-    private void giveVoteItem(Player p) {
-        if (!votingOpen()) return;
-        ItemStack it = item(Material.PAPER, ChatColor.YELLOW + "Map-Abstimmung " + ChatColor.GRAY + "(Rechtsklick)");
+    /** Verteilt die Items der Wartelobby (Plätze in der config.yml unter lobby-items, -1 = aus). */
+    private void giveLobbyItems(Player p) {
+        if (votingOpen()) {
+            setLobbyItem(p, s().voteItemSlot, "vote", item(Material.PAPER, ChatColor.YELLOW + "Map-Abstimmung " + ChatColor.GRAY + "(Rechtsklick)"));
+        }
+        if (plugin.stats().isEnabled()) {
+            ItemStack head = item(Material.PLAYER_HEAD, ChatColor.GREEN + "Deine Stats " + ChatColor.GRAY + "(Rechtsklick)");
+            if (head.getItemMeta() instanceof org.bukkit.inventory.meta.SkullMeta skull) {
+                skull.setOwningPlayer(p);
+                head.setItemMeta(skull);
+            }
+            setLobbyItem(p, s().statsItemSlot, "stats", head);
+        }
+        setLobbyItem(p, s().mapInfoItemSlot, "mapinfo", item(Material.FILLED_MAP, ChatColor.AQUA + "Map-Info " + ChatColor.GRAY + "(Rechtsklick)"));
+    }
+
+    private void setLobbyItem(Player p, int slot, String type, ItemStack it) {
+        if (slot < 0 || slot > 8) return;
         ItemMeta meta = it.getItemMeta();
-        meta.getPersistentDataContainer().set(voteItemKey, PersistentDataType.BYTE, (byte) 1);
+        meta.getPersistentDataContainer().set(lobbyItemKey, PersistentDataType.STRING, type);
         it.setItemMeta(meta);
-        p.getInventory().setItem(4, it);
+        p.getInventory().setItem(slot, it);
+    }
+
+    private void clearLobbyItems(Player p) {
+        for (int slot = 0; slot <= 8; slot++) {
+            if (lobbyItemType(p.getInventory().getItem(slot)) != null) p.getInventory().setItem(slot, null);
+        }
+    }
+
+    /** Zeigt im Chat alles Wichtige zur nächsten Map (bzw. zu den Maps der Abstimmung). */
+    public void showMapInfo(Player p) {
+        String line = ChatColor.DARK_AQUA + "" + ChatColor.STRIKETHROUGH + "                                        ";
+        p.sendMessage(line);
+        GameMap known = state == State.INGAME || state == State.ENDING ? map : maps.knownNextMap();
+        if (known == null && voteOptions.size() == 1) known = voteOptions.get(0);
+        if (known != null) {
+            p.sendMessage(ChatColor.AQUA + (state == State.INGAME ? "  Aktuelle Map: " : "  Nächste Map: ") + ChatColor.YELLOW + known.displayName);
+            describe(p, known);
+        } else if (votingOpen()) {
+            p.sendMessage(ChatColor.AQUA + "  Map-Abstimmung läuft:");
+            String own = voteOf(p);
+            for (GameMap m : voteOptions) {
+                p.sendMessage(ChatColor.GRAY + "  • " + ChatColor.YELLOW + m.displayName + ChatColor.GRAY + " – " + votesFor(m) + " Stimme(n)"
+                        + (m.key.equals(own) ? ChatColor.GREEN + " ✔ deine Wahl" : ""));
+                if (!m.description.isEmpty()) p.sendMessage(ChatColor.GRAY + "    " + m.description);
+            }
+            p.sendMessage(ChatColor.GRAY + "  Abstimmen: Papier in der Hotbar oder /mm vote");
+        } else {
+            p.sendMessage(ChatColor.AQUA + "  Nächste Map: " + ChatColor.YELLOW + "zufällig");
+        }
+        p.sendMessage(ChatColor.GRAY + "  Spielbare Maps: " + ChatColor.WHITE + maps.playableMaps().size());
+        p.sendMessage(line);
+    }
+
+    private void describe(Player p, GameMap m) {
+        if (!m.description.isEmpty()) p.sendMessage(ChatColor.GRAY + "  " + m.description);
+        if (!m.author.isEmpty()) p.sendMessage(ChatColor.GRAY + "  Erbauer: " + ChatColor.WHITE + m.author);
+        p.sendMessage(ChatColor.GRAY + "  Spawns: " + ChatColor.WHITE + m.spawns.size() + ChatColor.GRAY + "  Gold-Punkte: " + ChatColor.WHITE + m.gold.size());
     }
 
     /** Text für Scoreboard & Co.: welche Map als Nächstes gespielt wird. */
@@ -702,8 +757,8 @@ public class Game {
         newVoteRound();
         Location lobby = maps.currentLobby();
         for (Player p : online(players)) {
-            p.getInventory().setItem(4, null);
-            giveVoteItem(p);
+            clearLobbyItems(p);
+            giveLobbyItems(p);
             // Hat sich die Lobby geändert (z. B. andere nächste Map mit eigener Lobby), alle mitnehmen
             if (lobby != null && (!p.getWorld().equals(lobby.getWorld()) || p.getLocation().distanceSquared(lobby) > 25)) {
                 p.teleport(lobby);

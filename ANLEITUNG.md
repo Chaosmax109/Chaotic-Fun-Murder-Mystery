@@ -60,7 +60,34 @@ Zum Ausprobieren ohne eigene Map: **`/mm map testmap`**, das geht im Spiel und i
 
 Danach ist die Map sofort spielbar. Ansehen: `/mm map tp testmap`, Lobby: `/mm tplobby testmap`, nächste Runde darauf: `/mm map next testmap`. Erneutes `/mm map testmap` baut sie neu auf, z. B. wenn etwas kaputtgegangen ist. Nicht mehr gebraucht? `/mm map delete testmap`.
 
-### Maps hinzufügen
+### Map-Menü: `/mm maps`
+
+Alles rund um die Maps geht bequem über ein Menü (nur für OPs):
+
+- **Übersicht:** alle Maps mit Status. Bei nicht spielbaren Maps steht der Grund dabei, z. B. „keine Spieler-Spawns“ oder „Welt nicht gefunden“. Unten gibt es Knöpfe für:
+  - **Test-Map erzeugen**
+  - **Hochgeladene Maps importieren**
+  - **Auswahl-Modus wechseln:** Abstimmung → Zufall pro Runde → Zufall pro Serverstart
+  - **Globale Lobby hier setzen**
+- **Map anklicken → Bearbeiten:**
+  - zur Map teleportieren
+  - Spieler-Spawn hier hinzufügen, Gold-Spawn hier hinzufügen
+  - eigene Lobby hier setzen (Rechtsklick: entfernen)
+  - Icon = Item in deiner Hand
+  - aktivieren / deaktivieren
+  - als nächste Map spielen
+  - alle Spawns oder Gold-Spawns löschen bzw. die Map löschen, jeweils mit Shift-Klick
+
+Anzeigename, Beschreibung und Erbauer setzt du per Befehl: `/mm map rename <map> <Name>`, `/mm map description <map> <Text>`, `/mm map author <map> <Name>`. Sie erscheinen in der Map-Info und in der Abstimmung.
+
+### Maps hochladen
+
+1. Die Map als **Welt-Ordner** oder **ZIP-Datei** nach `plugins/MurderMystery/upload/` hochladen, z. B. per FTP oder im Dateimanager deines Hosters. Die Welt darf in der ZIP auch in einem Unterordner liegen, das Plugin sucht die `level.dat`.
+2. Importiert wird **automatisch beim nächsten Serverstart**, oder sofort mit `/mm map import` bzw. im Menü `/mm maps` → „Hochgeladene Maps importieren“. Das geht auch in der Server-Konsole.
+3. Der Dateiname wird zum Map-Namen, z. B. `Villa Neu.zip` → Map `villa_neu` in der Welt `mm_villa_neu`. Die hochgeladene Datei wandert danach nach `upload/importiert/`.
+4. Danach nur noch Spawns setzen: `/mm map tp villa_neu`, dann `/mm addspawn` und `/mm addgold`, oder im Menü.
+
+### Maps per Befehl hinzufügen (ohne Upload)
 
 1. **Welt-Ordner der Map** (z. B. `villa`) in den Server-Ordner legen, also neben `world`, und den Server neu starten.
    - Alternativ kannst du eine Map auch in einer schon geladenen Welt bauen, z. B. in der Hauptwelt.
@@ -73,7 +100,11 @@ Die Spawn-Befehle gelten immer für die Map in der Welt, in der du stehst. Liege
 
 | Befehl | Was es macht |
 |---|---|
-| `/mm map list` | Alle Maps mit Status (spielbar, Welt fehlt, keine Spawns, deaktiviert) |
+| `/mm maps` | Map-Menü (siehe oben) |
+| `/mm map list` | Alle Maps mit Status und dem Grund, falls eine Map nicht spielbar ist |
+| `/mm map import` | Hochgeladene Maps aus `upload/` importieren |
+| `/mm map edit <name>` | Bearbeiten-Menü einer Map öffnen |
+| `/mm map rename` / `description` / `author <name> <text>` | Anzeigename, Beschreibung, Erbauer |
 | `/mm map create <name> [weltordner]` | Map anlegen |
 | `/mm map testmap` | Fertige Test-Map (Flachwelt mit Arena und Lobby) erzeugen |
 | `/mm map tp <name>` | Zur Map teleportieren |
@@ -109,7 +140,17 @@ Wer mit einer älteren Version eine Arena eingerichtet hatte: Die Spawns werden 
 
 ### Allgemein
 
-Für alle Spieler: `/mm join`, `/mm leave`, `/mm vote`, `/stats [Spieler]`.
+Für alle Spieler: `/mm join`, `/mm leave`, `/mm vote`, `/stats [Spieler]`. Alle `/mm`-Befehle lassen sich mit **Tab** vervollständigen, auch Map-Namen, Spieler und Spawn-Nummern.
+
+**Items in der Lobby-Hotbar** (Rechtsklick benutzt sie):
+
+| Platz | Item | Funktion |
+|---|---|---|
+| 1 | Karte „Map-Info“ | Zeigt die nächste Map mit Beschreibung und Erbauer, bzw. den Stand der Abstimmung |
+| 5 | Papier „Map-Abstimmung“ | Öffnet das Abstimmungs-Menü (nur im Abstimmungs-Modus mit mehreren Maps) |
+| 9 | Eigener Kopf „Deine Stats“ | Öffnet das Stats-Menü (nur mit verbundener Datenbank) |
+
+Die Plätze stellst du in der `config.yml` unter `lobby-items` ein. `0` schaltet ein Item aus.
 
 Beim Rundenstart bekommt **jeder Spieler einen eigenen Spawn** (zufällig verteilt). Gibt es weniger Spawns als Spieler, teilen sich einige einen. `/mm info` weist darauf hin.
 
