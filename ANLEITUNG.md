@@ -93,7 +93,7 @@ Beim **allerersten Start**, wenn es noch keine Map gibt, erzeugt das Plugin auto
 - eine Glas-Lobby als eigene Lobby
 - einen fertig eingestellten Spielbereich
 
-Damit ist das Plugin sofort spielbar. `/mm map testmap` baut sie jederzeit neu auf.
+Damit ist das Plugin sofort spielbar. Die Welt der Standard-Map liegt danach wie jede andere Map als Ordner `arenas/default_map/`, zum Ansehen, Herunterladen und Bearbeiten. `/mm map testmap` baut sie jederzeit neu auf.
 
 ### Lobby
 
@@ -138,7 +138,7 @@ Die Spawn-Befehle gelten für die Map in der Welt, in der du stehst. Liegen mehr
 | Befehl | Was es macht |
 |---|---|
 | `/mm maps` | Map-Menü |
-| `/mm map list` | Alle Maps mit Status und Grund, falls eine Map nicht spielbar ist |
+| `/mm map list` | Alle Maps mit Status, Grund (falls nicht spielbar) und wo ihre Datei und ihr Welt-Ordner liegen |
 | `/mm map import` | Neue Welt-Ordner und ZIPs in `arenas/` einrichten |
 | `/mm map create <name> [welt]` | Map-Datei für eine vorhandene Welt anlegen (Welt-Ordner aus `arenas/` oder Server-Welt) |
 | `/mm map testmap` | Standard-Map (neu) erzeugen |
@@ -150,6 +150,7 @@ Die Spawn-Befehle gelten für die Map in der Welt, in der du stehst. Liegen mehr
 | `/mm map next <name>` | Die nächste Runde auf dieser Map spielen |
 | `/mm map rename` / `description` / `author <name> <text>` | Anzeigename, Beschreibung, Erbauer |
 | `/mm map reinstall <name>` | Geänderten Welt-Ordner aus `arenas/` übernehmen |
+| `/mm map export <name> [ordner]` | Welt einer Map, die eine Server-Welt nutzt, als Ordner nach `arenas/` kopieren und die Map darauf umstellen |
 | `/mm map delete <name>` | Map-Datei löschen (Welt-Ordner und Server-Welt bleiben) |
 | `/mm addspawn` / `/mm addgold` | Spieler- bzw. Gold-Spawn hinzufügen |
 | `/mm spawns`, `/mm tpspawn <nr>`, `/mm removespawn <nr>` | Spieler-Spawns verwalten |
@@ -197,8 +198,8 @@ Tipp: OPs im **Kreativmodus** sind vom Block- und Inventarschutz ausgenommen. Zu
 - Ab `min-players` (Standard 4) startet ein 30-Sekunden-Countdown, bei voller Runde 10 Sekunden.
 - Rollen werden zufällig verteilt: standardmäßig **1 Mörder**, **1 Detektiv**, der Rest **Unschuldige** (Anzahl einstellbar, siehe unten). Namensschilder sind versteckt.
 - Nach 10 Sekunden bekommen Mörder (Messer) und Detektiv (Bogen) ihre Waffen.
-- **Mörder:** Linksklick = erstechen, Rechtsklick = Messer werfen (5 s Abklingzeit).
-- **Detektiv:** Bogen, nach jedem Schuss kommt nach 5 s ein neuer Pfeil.
+- **Mörder:** Linksklick = erstechen, Rechtsklick = Messer werfen. Das Messer kommt zurück ins Inventar, sobald es gelandet ist (Wand, Reichweite oder Treffer). Danach kann man es erst nach der Abklingzeit (Standard 5 s) wieder werfen. Über der Hotbar läuft dafür ein Balken mit Restzeit, am Ende steht „Messer-Wurf bereit“.
+- **Detektiv:** Bogen. Nach jedem Schuss lädt er nach (Standard 5 s). Über der Hotbar läuft ein Balken mit Restzeit, am Ende steht „Bogen geladen“. Auf dem Bogen selbst ist die Abklingzeit ebenfalls zu sehen.
 - **Gold:** erscheint an den Gold-Spawns. Standardmäßig gibt es für 10 Gold Bogen + 1 Pfeil (jede weiteren 10 Gold = 1 Pfeil). Pro Rolle einstellbar in `gold-rewards.yml`.
 - Stirbt der Detektiv, fällt sein Bogen auf den Boden – jeder Unschuldige kann ihn aufheben (nicht der Mörder).
 - Erschießt ein Unschuldiger einen anderen Unschuldigen, sterben **beide**.
@@ -284,7 +285,7 @@ Was jede Rolle einstellen kann:
 
 Die Rollen werden in der Reihenfolge aus der Datei vergeben. Mehrere Spieler im Team `MURDERER` kennen sich gegenseitig und können sich nicht töten. Tötet ein Unschuldiger einen anderen Unschuldigen, stirbt er mit, außer `team-kill-kills-shooter: false` ist gesetzt.
 
-**Wahrscheinlichkeits-Anzeige:** In der Lobby zeigt das Scoreboard unter „Deine Chancen“, mit welcher Wahrscheinlichkeit man welche Rolle bekommt, abhängig von der aktuellen Spielerzahl. Für alle Rollen abschalten mit `show-chances: false` ganz oben in der `roles.yml`. Für einzelne Rollen geht das mit `show-chance: false`.
+**Wahrscheinlichkeits-Anzeige:** In der Lobby sieht jeder Spieler oben am Bildschirm **eine Bossbar pro Rolle**, z. B. „Deine Chance auf Mörder: 25 %“, in der Farbe der Rolle. Die Chance hängt von der aktuellen Spielerzahl ab. Mit `chance-display` in der `roles.yml` wählst du `BOSSBAR` (Standard), `SCOREBOARD` oder `BOTH`. Für alle Rollen abschalten mit `show-chances: false`, für einzelne Rollen mit `show-chance: false`.
 
 ### Gold (`gold.yml`)
 

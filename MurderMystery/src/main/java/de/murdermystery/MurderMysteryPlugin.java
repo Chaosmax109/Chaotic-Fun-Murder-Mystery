@@ -279,6 +279,8 @@ public class MurderMysteryPlugin extends JavaPlugin {
                 p.sendMessage(ChatColor.GRAY + " " + m.key + ChatColor.DARK_GRAY + " (" + m.displayName + ChatColor.DARK_GRAY + ", Welt " + m.world + ") "
                         + status + ChatColor.GRAY + " – " + m.spawns.size() + " Spawns, " + m.gold.size() + " Gold, Lobby: "
                         + (m.ownLobby() == null ? "global" : "eigene"));
+                p.sendMessage(ChatColor.DARK_GRAY + "   Datei: plugins/MurderMystery/arenas/" + m.file.getName() + " – Welt: "
+                        + (maps.isTemplate(m.worldSetting) ? "arenas/" + m.worldSetting + "/" : "Server-Welt " + m.world + " (/mm map export " + m.key + ")"));
             }
             return;
         }
@@ -372,6 +374,17 @@ public class MurderMysteryPlugin extends JavaPlugin {
                     }
                     default -> p.sendMessage(Util.PREFIX + ChatColor.RED + "/mm map area " + m.key + " <corner1|corner2|on|off>");
                 }
+            }
+            case "export" -> {
+                if (maps.isTemplate(m.worldSetting)) {
+                    p.sendMessage(Util.PREFIX + "Die Welt liegt schon als Ordner in arenas/" + m.worldSetting + ".");
+                    return;
+                }
+                String folder = args.length > 3 ? args[3] : m.key;
+                p.sendMessage(Util.PREFIX + "Speichere die Welt '" + m.world + "' als Ordner arenas/" + folder + " …");
+                maps.exportTemplate(m, folder, error -> p.sendMessage(Util.PREFIX + (error == null
+                        ? ChatColor.GREEN + "Fertig: plugins/MurderMystery/arenas/" + folder + "/" + ChatColor.GRAY + " – zum Ansehen, Herunterladen oder Bearbeiten."
+                        : ChatColor.RED + error)));
             }
             case "reinstall" -> {
                 p.sendMessage(Util.PREFIX + "Übernehme die aktuelle Version von arenas/" + m.worldSetting + " …");
@@ -579,6 +592,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
         p.sendMessage(ChatColor.YELLOW + "/mm map rename | description | author <name> <text>" + ChatColor.GRAY + " – Anzeigename, Beschreibung, Erbauer");
         p.sendMessage(ChatColor.YELLOW + "/mm map area <name> corner1 | corner2 | on | off" + ChatColor.GRAY + " – Spielbereich (Größe) der Map");
         p.sendMessage(ChatColor.YELLOW + "/mm map reinstall <name>" + ChatColor.GRAY + " – geänderten Welt-Ordner aus arenas/ übernehmen");
+        p.sendMessage(ChatColor.YELLOW + "/mm map export <name> [ordner]" + ChatColor.GRAY + " – Welt der Map als Ordner in arenas/ ablegen");
         p.sendMessage(ChatColor.YELLOW + "/mm map tp <name>" + ChatColor.GRAY + " – zur Map teleportieren");
         p.sendMessage(ChatColor.YELLOW + "/mm map enable | disable <name>" + ChatColor.GRAY + " – Map an-/ausschalten");
         p.sendMessage(ChatColor.YELLOW + "/mm map setlobby [name]" + ChatColor.GRAY + " – eigene Wartelobby für diese Map setzen");

@@ -19,10 +19,10 @@ public class CommandTabCompleter implements TabCompleter {
             "spawns", "golds", "removespawn", "removegold", "tpspawn", "tpgold", "clearspawns", "cleargold",
             "start", "stop", "info", "reload");
     private static final List<String> MAP_ACTIONS = List.of("list", "gui", "create", "import", "testmap", "edit", "tp",
-            "enable", "disable", "next", "setlobby", "clearlobby", "area", "reinstall", "rename", "description", "author", "delete", "help");
+            "enable", "disable", "next", "setlobby", "clearlobby", "area", "reinstall", "export", "rename", "description", "author", "delete", "help");
     /** Map-Aktionen, die als drittes Argument einen Map-Namen erwarten. */
     private static final List<String> MAP_ACTIONS_WITH_NAME = List.of("edit", "tp", "enable", "disable", "next",
-            "setlobby", "clearlobby", "area", "reinstall", "rename", "description", "author", "delete");
+            "setlobby", "clearlobby", "area", "reinstall", "export", "rename", "description", "author", "delete");
 
     private final MurderMysteryPlugin plugin;
 

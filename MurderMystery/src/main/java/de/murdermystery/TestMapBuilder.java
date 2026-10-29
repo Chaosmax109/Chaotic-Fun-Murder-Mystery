@@ -41,6 +41,12 @@ public final class TestMapBuilder {
         w.setDifficulty(Difficulty.PEACEFUL);
 
         int y = w.getHighestBlockYAt(0, 0) + 1; // erste freie Höhe über dem Boden
+        // Umgebung vorab erzeugen, damit der exportierte Welt-Ordner (arenas/default_map) vollständig ist
+        for (int cx = -4; cx <= 7; cx++) {
+            for (int cz = -4; cz <= 4; cz++) {
+                w.getChunkAt(cx, cz).load(true);
+            }
+        }
         buildArena(w, y);
         buildLobby(w, y);
 
@@ -82,6 +88,11 @@ public final class TestMapBuilder {
         m.corner2 = Util.serialize(new Location(w, ARENA_RADIUS, y + 20, ARENA_RADIUS));
         m.areaEnabled = true;
         maps.saveMap(m);
+        // Welt zusätzlich als sichtbaren Welt-Ordner arenas/default_map ablegen (wie hochgeladene Maps)
+        if (!new java.io.File(maps.arenasDir(), KEY).exists()) {
+            maps.exportTemplate(m, KEY, error -> Bukkit.getLogger().info("[MurderMystery] "
+                    + (error == null ? "Standard-Map als Welt-Ordner arenas/" + KEY + " abgelegt." : "Standard-Map nicht exportiert: " + error)));
+        }
         if (maps.getLobby() == null) {
             maps.setLobby(lobby);
         }

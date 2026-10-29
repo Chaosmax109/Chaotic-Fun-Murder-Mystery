@@ -148,6 +148,8 @@ public class Settings {
     public final boolean teamKillKillsShooter;
     public final boolean neutralKillKillsShooter;
     public final boolean showChances;
+    /** Wo die Chancen angezeigt werden: BOSSBAR, SCOREBOARD oder BOTH. */
+    public final String chanceDisplay;
     /** Alle Rollen außer "innocent", in der Reihenfolge aus roles.yml. */
     public final List<Role> specialRoles;
     /** Die Rolle "innocent" für alle übrigen Spieler. */
@@ -185,6 +187,8 @@ public class Settings {
         teamKillKillsShooter = roles.getBoolean("team-kill-kills-shooter", true);
         neutralKillKillsShooter = roles.getBoolean("neutral-kill-kills-shooter", false);
         showChances = roles.getBoolean("show-chances", true);
+        String display = roles.getString("chance-display", "BOSSBAR").toUpperCase(Locale.ROOT);
+        chanceDisplay = display.equals("SCOREBOARD") || display.equals("BOTH") ? display : "BOSSBAR";
         List<Role> special = new ArrayList<>();
         Role filler = null;
         ConfigurationSection section = roles.getConfigurationSection("roles");

@@ -12,6 +12,8 @@ neutral-kill-kills-shooter: false
 # Zeigt wartenden Spielern im Scoreboard, mit welcher Wahrscheinlichkeit sie welche Rolle bekommen.
 # Pro Rolle lässt sich die Anzeige zusätzlich mit "show-chance: false" ausblenden.
 show-chances: true
+# Wo die Chancen stehen: BOSSBAR (eine Leiste pro Rolle oben am Bildschirm), SCOREBOARD oder BOTH
+chance-display: BOSSBAR
 
 # ---------------------------------------------------------------------------
 # Rollen

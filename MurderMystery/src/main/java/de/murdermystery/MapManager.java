@@ -336,6 +336,61 @@ public class MapManager {
     }
 
     /**
+     * Legt die aktuelle Server-Welt der Map als Welt-Ordner {@code arenas/<folder>/} ab – zum Ansehen, Herunterladen
+     * und Bearbeiten – und stellt die Map darauf um ({@code world: <folder>}). Die Welt wird vorher gespeichert,
+     * kopiert wird im Hintergrund. {@code done} bekommt null bei Erfolg, sonst die Fehlermeldung.
+     */
+    public void exportTemplate(GameMap m, String folder, java.util.function.Consumer<String> done) {
+        World w = loadWorld(m.world);
+        if (w == null) {
+            done.accept("Die Welt '" + m.world + "' wurde nicht gefunden.");
+            return;
+        }
+        File target = new File(arenasDir, folder);
+        if (target.exists()) {
+            done.accept("Es gibt schon einen Ordner arenas/" + folder + ".");
+            return;
+        }
+        w.save();
+        File container = Bukkit.getWorldContainer();
+        World main = Bukkit.getWorlds().get(0);
+        // Paper 26.x: Daten der Welt liegen unter <hauptwelt>/dimensions/minecraft/<name> (Hauptwelt: overworld)
+        File legacy = new File(container, m.world);
+        File dimension = new File(container, main.getName() + File.separator + "dimensions" + File.separator + "minecraft"
+                + File.separator + (w.equals(main) ? "overworld" : m.world.toLowerCase(Locale.ROOT)));
+        File levelDat = new File(container, main.getName() + File.separator + "level.dat");
+        // Kurz warten, damit Paper die Chunks fertig auf die Festplatte geschrieben hat
+        Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> {
+            String error = null;
+            try {
+                if (new File(legacy, "level.dat").isFile()) {
+                    copyTree(legacy.toPath(), target.toPath());
+                } else if (dimension.isDirectory()) {
+                    copyTree(dimension.toPath(), target.toPath().resolve("dimensions").resolve("minecraft").resolve("overworld"));
+                    Files.copy(levelDat.toPath(), target.toPath().resolve("level.dat"), StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    error = "Die Welt-Daten von '" + m.world + "' wurden nicht gefunden.";
+                }
+                if (error == null) {
+                    Files.deleteIfExists(target.toPath().resolve("session.lock"));
+                    Files.deleteIfExists(target.toPath().resolve("uid.dat"));
+                }
+            } catch (IOException e) {
+                error = "Kopieren fehlgeschlagen: " + e.getMessage();
+            }
+            String result = error;
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                // Die Server-Welt bleibt dieselbe – nur wenn ihr Name zum Ordner passt, wird auf den Ordner umgestellt
+                if (result == null && serverWorldName(folder).equals(m.world)) {
+                    m.worldSetting = folder;
+                    saveMap(m);
+                }
+                done.accept(result);
+            });
+        }, 40L);
+    }
+
+    /**
      * Übernimmt eine geänderte Version des Welt-Ordners aus arenas/: Server-Welt entladen, löschen, neu kopieren, laden.
      * Gibt eine Fehlermeldung zurück oder null bei Erfolg. Spieler in der Welt werden vorher zur Lobby gebracht.
      */

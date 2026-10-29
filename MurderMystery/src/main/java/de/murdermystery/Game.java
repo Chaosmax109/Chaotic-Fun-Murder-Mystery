@@ -6,6 +6,8 @@ import de.murdermystery.Settings.RewardItem;
 import de.murdermystery.Settings.Role;
 import de.murdermystery.Settings.Team;
 import de.murdermystery.Settings.WeaponType;
+import net.kyori.adventure.bossbar.BossBar;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
@@ -63,7 +65,14 @@ public class Game {
     private final Set<UUID> left = new HashSet<>();
     private final Map<UUID, Board> boards = new HashMap<>();
     private final Map<UUID, Integer> gold = new HashMap<>();
-    private final Map<UUID, Long> knifeReady = new HashMap<>();
+    /** Abklingzeit: bereit ab {@code readyAt} (ms), Gesamtdauer {@code total} (ms) für den Fortschrittsbalken. */
+    private record Cooldown(long readyAt, long total) {
+    }
+
+    private final Map<UUID, Cooldown> knifeCooldown = new HashMap<>();
+    private final Map<UUID, Cooldown> bowCooldown = new HashMap<>();
+    /** Bossbars mit den Rollen-Chancen pro Spieler (Rollen-Schlüssel → Leiste). */
+    private final Map<UUID, Map<String, BossBar>> chanceBars = new HashMap<>();
     private final Map<Integer, Item> goldItems = new HashMap<>();
     private final List<BukkitTask> knifeTasks = new ArrayList<>();
     private final List<ArmorStand> knives = new ArrayList<>();
@@ -113,6 +122,7 @@ public class Game {
         if (ticker != null) ticker.cancel();
         if (fastTicker != null) fastTicker.cancel();
         clearEntities();
+        hideAllChanceBars();
         for (UUID id : allMembers()) {
             Player p = Bukkit.getPlayer(id);
             if (p != null) {
@@ -186,6 +196,7 @@ public class Game {
             if (!quitting) p.sendMessage(Util.PREFIX + "Du bist in keinem Spiel.");
             return;
         }
+        hideChanceBars(p);
         boolean wasPlaying = players.remove(id);
         spectators.remove(id);
         boards.remove(id);
@@ -447,7 +458,72 @@ public class Game {
         if (state == State.WAITING || state == State.STARTING) {
             for (Player p : online(players)) giveLobbyItems(p);
         }
+        updateChanceBars();
         updateBoards();
+    }
+
+    // ------------------------------------------------------------------ Chancen als Bossbar
+
+    /** Pro Spieler eine Bossbar je Rolle mit seiner Chance auf diese Rolle – nur in der Lobby. */
+    private void updateChanceBars() {
+        boolean show = s().showChances && !s().chanceDisplay.equals("SCOREBOARD")
+                && (state == State.WAITING || state == State.STARTING);
+        int n = Math.max(players.size(), 2);
+        for (Player p : online(players)) {
+            Map<String, BossBar> bars = chanceBars.computeIfAbsent(p.getUniqueId(), k -> new LinkedHashMap<>());
+            Set<String> shown = new HashSet<>();
+            if (show) {
+                for (Role r : s().specialRoles) {
+                    if (!r.showChance || r.chance <= 0) continue;
+                    double c = chanceFor(r, n);
+                    String pct = c < 10 ? String.format(Locale.GERMANY, "%.1f %%", c) : String.format(Locale.GERMANY, "%.0f %%", c);
+                    Component title = Util.text(ChatColor.GRAY + "Deine Chance auf " + r.coloredName() + ChatColor.GRAY + ": " + ChatColor.WHITE + pct);
+                    float progress = (float) Math.max(0, Math.min(1, c / 100));
+                    BossBar bar = bars.get(r.key);
+                    if (bar == null) {
+                        bar = BossBar.bossBar(title, progress, barColor(r.color), BossBar.Overlay.NOTCHED_10);
+                        bars.put(r.key, bar);
+                        p.showBossBar(bar);
+                    } else {
+                        bar.name(title);
+                        bar.progress(progress);
+                    }
+                    shown.add(r.key);
+                }
+            }
+            bars.entrySet().removeIf(e -> {
+                if (shown.contains(e.getKey())) return false;
+                p.hideBossBar(e.getValue());
+                return true;
+            });
+        }
+    }
+
+    private void hideChanceBars(Player p) {
+        Map<String, BossBar> bars = chanceBars.remove(p.getUniqueId());
+        if (bars != null) bars.values().forEach(p::hideBossBar);
+    }
+
+    private void hideAllChanceBars() {
+        for (UUID id : new ArrayList<>(chanceBars.keySet())) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null) hideChanceBars(p);
+            else chanceBars.remove(id);
+        }
+    }
+
+    /** Bossbar-Farbe passend zur Farbe der Rolle (&c = rot, &b = blau, …). */
+    private static BossBar.Color barColor(String color) {
+        char c = color.length() >= 2 ? Character.toLowerCase(color.charAt(color.length() - 1)) : 'f';
+        return switch (c) {
+            case 'c', '4' -> BossBar.Color.RED;
+            case 'b', '3', '9', '1' -> BossBar.Color.BLUE;
+            case 'a', '2' -> BossBar.Color.GREEN;
+            case 'e', '6' -> BossBar.Color.YELLOW;
+            case 'd' -> BossBar.Color.PINK;
+            case '5' -> BossBar.Color.PURPLE;
+            default -> BossBar.Color.WHITE;
+        };
     }
 
     private void tickCountdown() {
@@ -497,7 +573,48 @@ public class Game {
         }
     }
 
+    /** Zeigt über der Hotbar die Abklingzeit von Messer-Wurf und Bogen (mit Balken) und meldet, wenn sie bereit sind. */
+    private void updateCooldownBars() {
+        long now = System.currentTimeMillis();
+        for (Player p : online(alive)) {
+            UUID id = p.getUniqueId();
+            List<String> parts = new ArrayList<>();
+            Cooldown knife = knifeCooldown.get(id);
+            if (knife != null) {
+                if (knife.readyAt() > now) {
+                    parts.add(ChatColor.RED + "Messer-Wurf " + bar(knife, now, ChatColor.RED) + " " + ChatColor.WHITE + seconds(knife.readyAt() - now));
+                } else {
+                    parts.add(ChatColor.GREEN + "✔ Messer-Wurf bereit");
+                    knifeCooldown.remove(id);
+                }
+            }
+            Cooldown bow = bowCooldown.get(id);
+            if (bow != null) {
+                if (bow.readyAt() > now) {
+                    parts.add(ChatColor.AQUA + "Bogen lädt " + bar(bow, now, ChatColor.AQUA) + " " + ChatColor.WHITE + seconds(bow.readyAt() - now));
+                } else {
+                    parts.add(ChatColor.GREEN + "✔ Bogen geladen");
+                    bowCooldown.remove(id);
+                }
+            }
+            if (!parts.isEmpty()) {
+                p.sendActionBar(Util.text(String.join(ChatColor.DARK_GRAY + "   |   ", parts)));
+            }
+        }
+    }
+
+    private static String bar(Cooldown cd, long now, ChatColor color) {
+        int filled = (int) Math.round(10.0 * (cd.total() - (cd.readyAt() - now)) / Math.max(1, cd.total()));
+        filled = Math.max(0, Math.min(10, filled));
+        return color + "▮".repeat(filled) + ChatColor.DARK_GRAY + "▮".repeat(10 - filled);
+    }
+
+    private static String seconds(long ms) {
+        return String.format(Locale.GERMANY, "%.1fs", ms / 1000.0);
+    }
+
     private void fastTick() {
+        if (state == State.INGAME) updateCooldownBars();
         if (state != State.INGAME || droppedBows.isEmpty()) return;
         for (Map.Entry<ArmorStand, Role> bow : new ArrayList<>(droppedBows.entrySet())) {
             Location bowLoc = bow.getKey().getLocation();
@@ -564,6 +681,7 @@ public class Game {
     // ------------------------------------------------------------------ Rundenablauf
 
     private void startGame() {
+        hideAllChanceBars();
         List<Player> list = online(players);
         GameMap chosen = maps.chooseForRound(voteWinner());
         if (chosen != null) maps.loadWorld(chosen.world);
@@ -582,7 +700,8 @@ public class Game {
         names.clear();
         left.clear();
         gold.clear();
-        knifeReady.clear();
+        knifeCooldown.clear();
+        bowCooldown.clear();
         alive.clear();
         bowHolders.clear();
         heroName = null;
@@ -854,6 +973,9 @@ public class Game {
         UUID id = p.getUniqueId();
         Role bow = bowHolders.get(id);
         if (!isAlive(p) || bow == null) return;
+        long ms = bow.arrowCooldown * 1000L;
+        bowCooldown.put(id, new Cooldown(System.currentTimeMillis() + ms, ms));
+        p.setCooldown(bow.weapon, (int) Math.max(1, bow.arrowCooldown * 20L)); // Nachlade-Anzeige auf dem Item
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (isAlive(p) && bowHolders.containsKey(id) && !p.getInventory().contains(Material.ARROW)) {
                 addArrows(p, 1);
@@ -872,15 +994,17 @@ public class Game {
         Role role = roles.get(id);
         if (!isAlive(p) || role == null || role.weaponType != WeaponType.KNIFE || !role.knifeThrow) return;
         long now = System.currentTimeMillis();
-        if (knifeReady.getOrDefault(id, 0L) > now) return;
-        knifeReady.put(id, now + role.knifeCooldown * 1000L);
+        Cooldown cd = knifeCooldown.get(id);
+        if (cd != null && cd.readyAt() > now) {
+            p.sendActionBar(Util.text(ChatColor.RED + "Messer-Wurf noch nicht bereit: " + ChatColor.WHITE + seconds(cd.readyAt() - now)));
+            return;
+        }
+        long ms = role.knifeCooldown * 1000L;
+        knifeCooldown.put(id, new Cooldown(now + ms, ms));
+        p.setCooldown(role.weapon, (int) Math.max(1, role.knifeCooldown * 20L)); // Abklingzeit auf dem Item anzeigen
 
+        // Das Messer fliegt – bis es landet, ist es nicht im Inventar
         p.getInventory().setItem(SLOT_WEAPON, null);
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (isAlive(p)) {
-                p.getInventory().setItem(SLOT_WEAPON, item(role.weapon, role.weaponName));
-            }
-        }, Math.max(1, role.knifeCooldown * 20L));
 
         Location start = p.getEyeLocation();
         Vector dir = start.getDirection().normalize();
@@ -931,6 +1055,16 @@ public class Game {
                 knives.remove(stand);
                 cancel();
                 knifeTasks.remove(task[0]);
+                // Messer ist gelandet (Wand, Reichweite oder Treffer) → zurück ins Inventar
+                if (isAlive(p) && roles.get(id) == role) {
+                    ItemStack cur = p.getInventory().getItem(SLOT_WEAPON);
+                    if (cur == null || cur.getType().isAir()) {
+                        p.getInventory().setItem(SLOT_WEAPON, item(role.weapon, role.weaponName));
+                    } else if (cur.getType() != role.weapon) {
+                        p.getInventory().addItem(item(role.weapon, role.weaponName));
+                    }
+                    Util.sound(p, 1.6f, "item.armor.equip_iron");
+                }
             }
         }.runTaskTimer(plugin, 1L, 1L);
         knifeTasks.add(task[0]);
@@ -1082,7 +1216,7 @@ public class Game {
         } else {
             lines.add(ChatColor.WHITE + "Map: " + ChatColor.YELLOW + nextMapText());
         }
-        if (!s().showChances) return;
+        if (!s().showChances || s().chanceDisplay.equals("BOSSBAR")) return;
         int n = Math.max(players.size(), 2);
         List<String> chances = new ArrayList<>();
         for (Role r : s().specialRoles) {
