@@ -50,4 +50,3 @@ mvn package
 
 Die Datei liegt danach unter `MurderMystery/target/MurderMystery.jar`.
 
-`test-server.ps1` startet einen lokalen Paper-Testserver (Windows), wenn unter `%LOCALAPPDATA%\Temp\mmbuild` ein Server und ein JDK 25 liegen.

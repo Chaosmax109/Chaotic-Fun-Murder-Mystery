@@ -37,6 +37,8 @@ public class MapManager {
         public Material icon;
         public final List<String> spawns = new ArrayList<>();
         public final List<String> gold = new ArrayList<>();
+        /** Eigene Wartelobby dieser Map ("" = keine, dann gilt die globale Lobby). */
+        public String lobby = "";
 
         GameMap(String key, String displayName, String world) {
             this.key = key;
@@ -74,6 +76,8 @@ public class MapManager {
     private GameMap startMap;
     /** Per /mm map next festgelegte Map für die nächste Runde. */
     private GameMap forcedNext;
+    /** Im Modus RANDOM_EACH_ROUND schon in der Lobby ausgeloste Map (damit ihre Lobby genutzt werden kann). */
+    private GameMap planned;
 
     public MapManager(MurderMysteryPlugin plugin) {
         this.plugin = plugin;
@@ -105,6 +109,7 @@ public class MapManager {
                 if (icon != null && icon.isItem()) m.icon = icon;
                 m.spawns.addAll(s.getStringList("spawns"));
                 m.gold.addAll(s.getStringList("gold"));
+                m.lobby = s.getString("lobby", "");
                 maps.put(m.key, m);
             }
         }
@@ -112,6 +117,7 @@ public class MapManager {
         // Bei /mm reload die bisherige Auswahl behalten (die Map-Objekte wurden neu angelegt)
         forcedNext = forcedNext == null ? null : maps.get(forcedNext.key);
         startMap = startMap == null ? null : maps.get(startMap.key);
+        planned = planned == null ? null : maps.get(planned.key);
     }
 
     /** Bis Version 2.2 gab es nur eine Arena in der config.yml – daraus wird jetzt eine Map. */
@@ -145,6 +151,7 @@ public class MapManager {
             yml.set(base + "world", m.world);
             yml.set(base + "enabled", m.enabled);
             yml.set(base + "icon", m.icon.name());
+            yml.set(base + "lobby", m.lobby);
             yml.set(base + "spawns", new ArrayList<>(m.spawns));
             yml.set(base + "gold", new ArrayList<>(m.gold));
         }
@@ -202,6 +209,7 @@ public class MapManager {
 
     // ------------------------------------------------------------------ Lobby
 
+    /** Die globale Wartelobby (Fallback für alle Maps ohne eigene Lobby). */
     public Location getLobby() {
         return Util.deserialize(lobby);
     }
@@ -212,6 +220,25 @@ public class MapManager {
         plugin.saveConfig();
     }
 
+    /**
+     * Die Lobby, in der gerade gewartet wird: die eigene Lobby der nächsten Map, falls diese schon feststeht
+     * und eine Lobby hat – sonst die globale Lobby.
+     */
+    public Location currentLobby() {
+        GameMap next = knownNextMap();
+        if (next != null) {
+            Location own = Util.deserialize(next.lobby);
+            if (own != null) return own;
+        }
+        return getLobby();
+    }
+
+    public void setMapLobby(GameMap m, Location l) {
+        m.lobby = l == null ? "" : Util.serialize(l);
+        save();
+    }
+
+    /** Spielbereit = es gibt eine globale Lobby und mindestens eine spielbare Map. */
     public boolean isReady() {
         return getLobby() != null && !playableMaps().isEmpty();
     }
@@ -299,6 +326,21 @@ public class MapManager {
         return startMap;
     }
 
+    /** Lost im Modus RANDOM_EACH_ROUND schon in der Lobby die nächste Map aus (zu Beginn jeder Wartephase). */
+    public void planNextRound() {
+        planned = mode == Mode.RANDOM_EACH_ROUND ? pickRandom(playableMaps()) : null;
+    }
+
+    /** Die Map der nächsten Runde, falls sie schon feststeht (sonst null, z. B. während einer Abstimmung). */
+    public GameMap knownNextMap() {
+        if (forcedNext != null) return forcedNext;
+        return switch (mode) {
+            case RANDOM_ON_START -> startMap;
+            case RANDOM_EACH_ROUND -> planned;
+            case VOTE -> null;
+        };
+    }
+
     /** Zufällige Auswahl für die Abstimmung (ohne die zuletzt gespielte Map, wenn genug andere da sind). */
     public List<GameMap> voteCandidates() {
         List<GameMap> list = withoutLast(playableMaps());
@@ -315,10 +357,11 @@ public class MapManager {
         } else {
             chosen = switch (mode) {
                 case RANDOM_ON_START -> startMap != null && startMap.playable() ? startMap : pickRandom(playableMaps());
-                case RANDOM_EACH_ROUND -> pickRandom(playableMaps());
+                case RANDOM_EACH_ROUND -> planned != null && planned.playable() ? planned : pickRandom(playableMaps());
                 case VOTE -> voted != null ? voted : pickRandom(playableMaps());
             };
         }
+        planned = null;
         if (chosen != null && mode != Mode.RANDOM_ON_START) markPlayed(chosen);
         return chosen;
     }

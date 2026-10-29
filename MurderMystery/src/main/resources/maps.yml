@@ -26,6 +26,7 @@ avoid-repeat: true
 #   world:        Name des Welt-Ordners
 #   enabled:      false = Map wird nicht gespielt
 #   icon:         Item im Abstimmungs-Menü
+#   lobby:        eigene Wartelobby der Map (per /mm map setlobby). Leer = globale Lobby aus der config.yml
 maps: {}
 
 # Wird automatisch gesetzt (zuletzt gespielte Map)

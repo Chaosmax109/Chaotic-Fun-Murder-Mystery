@@ -29,16 +29,26 @@ Hinweis für 1.8.9-Spieler: Das Spiel ist darauf ausgelegt, dass Mörder mit **e
 
 ## 4. Lobby und Maps einrichten (als OP)
 
-Es gibt **eine allgemeine Wartelobby** für alle Maps und **beliebig viele Maps**. Jede Map hat ihre eigenen Spieler- und Gold-Spawns.
+Es gibt **eine globale Wartelobby** und **beliebig viele Maps**. Jede Map hat ihre eigenen Spieler- und Gold-Spawns und kann optional eine **eigene Lobby** haben.
 
 ### Lobby
 
 | Befehl | Was es macht |
 |---|---|
-| `/mm setlobby` | Wartelobby an deiner Position setzen (gilt für alle Maps) |
-| `/mm tplobby` | Zur Lobby teleportieren |
+| `/mm setlobby` | Globale Lobby an deiner Position setzen |
+| `/mm map setlobby [map]` | Eigene Lobby für eine Map an deiner Position setzen |
+| `/mm map clearlobby <map>` | Eigene Lobby der Map entfernen, dann gilt wieder die globale |
+| `/mm tplobby [map]` | Zur globalen Lobby teleportieren, oder zur Lobby einer Map |
 
-Die Lobby kann in einer eigenen Welt liegen oder in derselben Welt wie eine Map. Wartende Spieler, die sich weiter als `lobby.max-distance` Blöcke (Standard 40) von der Lobby entfernen, werden zurückteleportiert. Mit `0` ist das abgeschaltet.
+**Welche Lobby genutzt wird:**
+1. Die **eigene Lobby der nächsten Map**, sobald feststeht, welche Map als Nächstes gespielt wird:
+   - bei `RANDOM_ON_START` immer
+   - bei `RANDOM_EACH_ROUND`, weil die Map schon zu Beginn der Wartezeit ausgelost wird
+   - nach `/mm map next`
+2. Sonst die **globale Lobby**, z. B. während einer Abstimmung oder wenn die Map keine eigene Lobby hat.
+3. **Fallback:** Ist keine globale Lobby gesetzt, wird die Position, an der der **erste Spieler** den Server betritt, automatisch als globale Lobby gespeichert. Das steht dann im Log, und OPs bekommen einen Hinweis im Chat. Ändern kannst du sie jederzeit mit `/mm setlobby`.
+
+Eine Lobby kann in einer eigenen Welt liegen oder in derselben Welt wie eine Map. Wartende Spieler, die sich weiter als `lobby.max-distance` Blöcke (Standard 40) von der Lobby entfernen, werden zurückteleportiert. Mit `0` ist das abgeschaltet.
 
 ### Maps hinzufügen
 
@@ -58,6 +68,7 @@ Die Spawn-Befehle gelten immer für die Map in der Welt, in der du stehst. Liege
 | `/mm map tp <name>` | Zur Map teleportieren |
 | `/mm map enable` / `disable <name>` | Map an- und ausschalten |
 | `/mm map next <name>` | Die nächste Runde auf genau dieser Map spielen |
+| `/mm map setlobby [name]` / `clearlobby <name>` | Eigene Lobby der Map setzen / entfernen |
 | `/mm map delete <name>` | Map entfernen (die Welt selbst bleibt) |
 | `/mm addspawn` / `/mm addgold` | Spieler- bzw. Gold-Spawn hinzufügen |
 | `/mm spawns`, `/mm tpspawn <nr>`, `/mm removespawn <nr>` | Spieler-Spawns verwalten |
@@ -81,7 +92,7 @@ In der `maps.yml` stellst du mit `mode` ein, wie die Map gewählt wird:
 
 - `vote-options`: wie viele Maps zur Abstimmung stehen (zufällig ausgewählt, Standard 3)
 - `avoid-repeat: true`: nie zweimal hintereinander dieselbe Map, auch nicht über einen Neustart hinweg (gilt, sobald es mindestens 2 Maps gibt)
-- Pro Map in der `maps.yml`: `display-name` (Name in Abstimmung und Scoreboard), `enabled`, `icon` (Item im Abstimmungs-Menü)
+- Pro Map in der `maps.yml`: `display-name` (Name in Abstimmung und Scoreboard), `enabled`, `icon` (Item im Abstimmungs-Menü), `lobby` (eigene Lobby, leer = globale)
 
 Wer mit einer älteren Version eine Arena eingerichtet hatte: Die Spawns werden beim ersten Start automatisch als Map übernommen, benannt nach ihrer Welt. Die Lobby bleibt, wie sie war.
 

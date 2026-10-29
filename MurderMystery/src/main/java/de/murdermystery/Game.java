@@ -136,9 +136,10 @@ public class Game {
             p.sendMessage(Util.PREFIX + "Du bist bereits im Spiel.");
             return;
         }
+        ensureLobby(p);
         if (!maps.isReady()) {
             if (p.hasPermission("mm.admin")) {
-                p.sendMessage(Util.PREFIX + ChatColor.RED + "Noch nicht eingerichtet: Lobby (/mm setlobby) und mindestens eine Map mit Spawns (/mm map create, /mm addspawn).");
+                p.sendMessage(Util.PREFIX + ChatColor.RED + "Noch nicht eingerichtet: mindestens eine Map mit Spawns (/mm map create, /mm addspawn).");
             }
             return;
         }
@@ -146,7 +147,7 @@ public class Game {
         if (state == State.INGAME || state == State.ENDING || players.size() >= s().maxPlayers) {
             spectators.add(p.getUniqueId());
             prepare(p, GameMode.SPECTATOR);
-            p.teleport(state == State.INGAME ? respawnPoint() : maps.getLobby());
+            p.teleport(state == State.INGAME ? respawnPoint() : maps.currentLobby());
             p.sendMessage(Util.PREFIX + "Eine Runde läuft gerade – du schaust zu und spielst in der nächsten Runde mit.");
             if (state == State.INGAME) {
                 boards.get(p.getUniqueId()).setHiddenNames(playerNames(players), true);
@@ -155,12 +156,28 @@ public class Game {
         }
         players.add(p.getUniqueId());
         prepare(p, GameMode.ADVENTURE);
-        p.teleport(maps.getLobby());
-        if (voteOptions.isEmpty()) newVoteRound();
+        p.teleport(maps.currentLobby());
+        if (voteOptions.isEmpty() && maps.mode() == MapManager.Mode.VOTE) newVoteRound();
         giveVoteItem(p);
         broadcast(ChatColor.YELLOW + p.getName() + ChatColor.GRAY + " ist beigetreten ("
                 + ChatColor.GREEN + players.size() + ChatColor.GRAY + "/" + ChatColor.GREEN + s().maxPlayers + ChatColor.GRAY + ")");
         updateBoards();
+    }
+
+    /**
+     * Fallback: Ist noch keine globale Lobby gesetzt, wird die Position des ersten Spielers, der den Server betritt,
+     * als globale Lobby gespeichert. Später jederzeit mit /mm setlobby änderbar.
+     */
+    public void ensureLobby(Player p) {
+        if (maps.getLobby() != null) return;
+        maps.setLobby(p.getLocation());
+        Location l = p.getLocation();
+        plugin.getLogger().info("Keine Lobby gesetzt – die Spawn-Position von " + p.getName() + " (" + l.getWorld().getName() + " "
+                + l.getBlockX() + " " + l.getBlockY() + " " + l.getBlockZ() + ") ist jetzt die globale Lobby.");
+        if (p.hasPermission("mm.admin")) {
+            p.sendMessage(Util.PREFIX + ChatColor.YELLOW + "Es war keine Lobby gesetzt – deine Position ist jetzt die globale Lobby. "
+                    + ChatColor.GRAY + "Ändern mit /mm setlobby.");
+        }
     }
 
     public void leave(Player p, boolean quitting) {
@@ -222,7 +239,7 @@ public class Game {
         int max = s().lobbyMaxDistance;
         if (max <= 0 || (state != State.WAITING && state != State.STARTING)) return;
         if (!players.contains(p.getUniqueId()) || p.getGameMode() == GameMode.CREATIVE) return;
-        Location lobby = maps.getLobby();
+        Location lobby = maps.currentLobby();
         if (lobby == null) return;
         if (!p.getWorld().equals(lobby.getWorld()) || p.getLocation().distanceSquared(lobby) > (double) max * max) {
             p.teleport(lobby);
@@ -236,6 +253,7 @@ public class Game {
     public void newVoteRound() {
         votes.clear();
         voteOptions.clear();
+        maps.planNextRound();
         if (maps.mode() == MapManager.Mode.VOTE) {
             voteOptions.addAll(maps.voteCandidates());
         }
@@ -308,12 +326,10 @@ public class Game {
 
     /** Text für Scoreboard & Co.: welche Map als Nächstes gespielt wird. */
     private String nextMapText() {
-        if (maps.forcedNext() != null) return maps.forcedNext().displayName;
-        return switch (maps.mode()) {
-            case RANDOM_ON_START -> maps.startMap() != null ? maps.startMap().displayName : "?";
-            case RANDOM_EACH_ROUND -> "Zufällig";
-            case VOTE -> voteOptions.size() == 1 ? voteOptions.get(0).displayName : "Abstimmung";
-        };
+        GameMap next = maps.knownNextMap();
+        if (next != null) return next.displayName;
+        if (voteOptions.size() == 1) return voteOptions.get(0).displayName;
+        return maps.mode() == MapManager.Mode.VOTE ? "Abstimmung" : "Zufällig";
     }
 
     // ------------------------------------------------------------------ Ticks
@@ -684,9 +700,14 @@ public class Game {
     public void refreshLobby() {
         if (state != State.WAITING && state != State.STARTING) return;
         newVoteRound();
+        Location lobby = maps.currentLobby();
         for (Player p : online(players)) {
             p.getInventory().setItem(4, null);
             giveVoteItem(p);
+            // Hat sich die Lobby geändert (z. B. andere nächste Map mit eigener Lobby), alle mitnehmen
+            if (lobby != null && (!p.getWorld().equals(lobby.getWorld()) || p.getLocation().distanceSquared(lobby) > 25)) {
+                p.teleport(lobby);
+            }
         }
         updateBoards();
     }
@@ -1051,7 +1072,7 @@ public class Game {
         if (state == State.INGAME && !spawns.isEmpty()) {
             return spawns.get(random.nextInt(spawns.size()));
         }
-        return maps.getLobby();
+        return maps.currentLobby();
     }
 
     private int countAlive(Team team) {

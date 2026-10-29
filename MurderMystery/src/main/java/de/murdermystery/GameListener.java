@@ -50,8 +50,10 @@ public class GameListener implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
+        Player p = e.getPlayer();
+        // Ohne gesetzte Lobby wird die Spawn-Position des ersten Spielers zur globalen Lobby
+        game.ensureLobby(p);
         if (plugin.settings().autoJoin) {
-            Player p = e.getPlayer();
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (p.isOnline()) game.join(p);
             }, 2L);

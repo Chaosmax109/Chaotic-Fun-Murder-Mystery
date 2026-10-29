@@ -42,9 +42,12 @@ public class MurderMysteryPlugin extends JavaPlugin {
         Bukkit.getScheduler().runTask(this, () -> {
             maps.loadWorlds();
             game.newVoteRound();
-            if (!maps.isReady()) {
-                getLogger().warning("Noch nicht eingerichtet: Lobby (/mm setlobby) und mindestens eine Map mit Spawns (/mm map create, /mm addspawn).");
-            } else if (settings.autoJoin) {
+            if (maps.playableMaps().isEmpty()) {
+                getLogger().warning("Noch nicht eingerichtet: mindestens eine Map mit Spawns (/mm map create, /mm addspawn).");
+            } else if (maps.getLobby() == null) {
+                getLogger().info("Keine globale Lobby gesetzt – die Position des ersten Spielers, der den Server betritt, wird als Lobby gespeichert.");
+            }
+            if (settings.autoJoin) {
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     game.join(p); // Spieler, die bei /reload schon online sind
                 }
@@ -179,12 +182,22 @@ public class MurderMysteryPlugin extends JavaPlugin {
         switch (sub) {
             case "setlobby" -> {
                 maps.setLobby(loc);
-                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Lobby gesetzt. Sie gilt für alle Maps.");
+                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Globale Lobby gesetzt. Sie gilt für alle Maps ohne eigene Lobby (/mm map setlobby).");
+                game.refreshLobby();
             }
             case "tplobby" -> {
-                Location lobby = maps.getLobby();
-                if (lobby == null) p.sendMessage(Util.PREFIX + ChatColor.RED + "Keine Lobby gesetzt (oder ihre Welt ist nicht geladen).");
-                else p.teleport(lobby);
+                GameMap m = args.length > 1 ? maps.get(args[1]) : null;
+                if (args.length > 1 && m == null) {
+                    p.sendMessage(Util.PREFIX + ChatColor.RED + "Keine Map mit dem Namen '" + args[1] + "'.");
+                    return true;
+                }
+                Location lobby = m != null ? Util.deserialize(m.lobby) : maps.getLobby();
+                if (lobby == null) {
+                    p.sendMessage(Util.PREFIX + ChatColor.RED + (m != null ? "Die Map '" + m.key + "' hat keine eigene Lobby." : "Keine globale Lobby gesetzt.")
+                            + ChatColor.GRAY + " (oder ihre Welt ist nicht geladen)");
+                } else {
+                    p.teleport(lobby);
+                }
             }
             case "map", "maps" -> mapCommand(p, args);
             case "addspawn", "addgold", "spawns", "golds", "removespawn", "removegold",
@@ -200,7 +213,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
                         + (stats.isEnabled() ? ChatColor.GREEN + "aktiv" : ChatColor.RED + "deaktiviert"));
             }
             case "info" -> {
-                p.sendMessage(Util.PREFIX + "Lobby: " + (maps.getLobby() != null ? ChatColor.GREEN + "gesetzt" : ChatColor.RED + "fehlt")
+                p.sendMessage(Util.PREFIX + "Globale Lobby: " + (maps.getLobby() != null ? ChatColor.GREEN + "gesetzt" : ChatColor.RED + "fehlt (wird beim nächsten Join gesetzt)")
                         + ChatColor.GRAY + ", spielbare Maps: " + ChatColor.YELLOW + maps.playableMaps().size() + "/" + maps.all().size()
                         + ChatColor.GRAY + ", Modus: " + ChatColor.YELLOW + maps.mode()
                         + ChatColor.GRAY + ", Status: " + ChatColor.YELLOW + game.getState());
@@ -229,13 +242,19 @@ public class MurderMysteryPlugin extends JavaPlugin {
                 else if (m.spawns.isEmpty()) status = ChatColor.GOLD + "keine Spawns";
                 else status = ChatColor.GREEN + "spielbar";
                 p.sendMessage(ChatColor.GRAY + " " + m.key + ChatColor.DARK_GRAY + " (" + m.displayName + ChatColor.DARK_GRAY + ", Welt " + m.world + ") "
-                        + status + ChatColor.GRAY + " – " + m.spawns.size() + " Spawns, " + m.gold.size() + " Gold");
+                        + status + ChatColor.GRAY + " – " + m.spawns.size() + " Spawns, " + m.gold.size() + " Gold, Lobby: "
+                        + (m.lobby.isEmpty() ? "global" : "eigene"));
             }
             return;
         }
         if (action.equals("help")) {
             sendMapHelp(p);
             return;
+        }
+        if (name == null && action.equals("setlobby")) {
+            // Ohne Namen: die Map in der Welt, in der man steht
+            List<GameMap> here = maps.mapsIn(p.getWorld());
+            if (here.size() == 1) name = here.get(0).key;
         }
         if (name == null) {
             p.sendMessage(Util.PREFIX + ChatColor.RED + "Bitte einen Map-Namen angeben: /mm map " + action + " <name>");
@@ -286,6 +305,17 @@ public class MurderMysteryPlugin extends JavaPlugin {
                 if (m.enabled) maps.loadWorld(m.world);
                 maps.save();
                 p.sendMessage(Util.PREFIX + "Map '" + m.key + "' ist jetzt " + (m.enabled ? ChatColor.GREEN + "aktiviert" : ChatColor.RED + "deaktiviert") + ".");
+                game.refreshLobby();
+            }
+            case "setlobby" -> {
+                maps.setMapLobby(m, p.getLocation());
+                p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Eigene Lobby für Map '" + m.key + "' gesetzt. "
+                        + ChatColor.GRAY + "Sie wird genutzt, sobald feststeht, dass als Nächstes diese Map gespielt wird.");
+                game.refreshLobby();
+            }
+            case "clearlobby" -> {
+                maps.setMapLobby(m, null);
+                p.sendMessage(Util.PREFIX + "Map '" + m.key + "' nutzt jetzt wieder die globale Lobby.");
                 game.refreshLobby();
             }
             case "next" -> {
@@ -421,7 +451,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
         p.sendMessage(ChatColor.YELLOW + "/mm vote" + ChatColor.GRAY + " – Für die nächste Map abstimmen");
         p.sendMessage(ChatColor.YELLOW + "/stats [Spieler]" + ChatColor.GRAY + " – Statistiken anzeigen");
         if (!admin) return;
-        p.sendMessage(ChatColor.YELLOW + "/mm setlobby | tplobby" + ChatColor.GRAY + " – Wartelobby (für alle Maps) setzen / hinteleportieren");
+        p.sendMessage(ChatColor.YELLOW + "/mm setlobby | tplobby [map]" + ChatColor.GRAY + " – globale Lobby setzen / zu einer Lobby teleportieren");
         p.sendMessage(ChatColor.YELLOW + "/mm map ..." + ChatColor.GRAY + " – Maps verwalten (/mm map help)");
         p.sendMessage(ChatColor.YELLOW + "/mm addspawn | addgold" + ChatColor.GRAY + " – Spieler-/Gold-Spawn in der Map, in der du stehst");
         p.sendMessage(ChatColor.YELLOW + "/mm spawns | tpspawn <nr> | removespawn <nr>" + ChatColor.GRAY + " – Spawns verwalten");
@@ -437,6 +467,8 @@ public class MurderMysteryPlugin extends JavaPlugin {
         p.sendMessage(ChatColor.YELLOW + "/mm map create <name> [weltordner]" + ChatColor.GRAY + " – Map anlegen (ohne Weltordner: aktuelle Welt)");
         p.sendMessage(ChatColor.YELLOW + "/mm map tp <name>" + ChatColor.GRAY + " – zur Map teleportieren");
         p.sendMessage(ChatColor.YELLOW + "/mm map enable | disable <name>" + ChatColor.GRAY + " – Map an-/ausschalten");
+        p.sendMessage(ChatColor.YELLOW + "/mm map setlobby [name]" + ChatColor.GRAY + " – eigene Wartelobby für diese Map setzen");
+        p.sendMessage(ChatColor.YELLOW + "/mm map clearlobby <name>" + ChatColor.GRAY + " – Map nutzt wieder die globale Lobby");
         p.sendMessage(ChatColor.YELLOW + "/mm map next <name>" + ChatColor.GRAY + " – nächste Runde auf dieser Map spielen");
         p.sendMessage(ChatColor.YELLOW + "/mm map delete <name>" + ChatColor.GRAY + " – Map entfernen (Welt bleibt)");
     }
