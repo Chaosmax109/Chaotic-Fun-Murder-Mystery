@@ -48,7 +48,12 @@ public class MurderMysteryPlugin extends JavaPlugin {
         // Welten erst laden, wenn der Server fertig gestartet ist
         Bukkit.getScheduler().runTask(this, () -> {
             maps.loadWorlds();
-            importer.importAll(null); // neu hochgeladene Maps aus plugins/MurderMystery/upload/
+            importer.importAll(null); // neue Welt-Ordner / ZIPs in plugins/MurderMystery/arenas/
+            if (maps.all().isEmpty() && importer.pending().isEmpty()) {
+                // Allererster Start: eine spielbare Standard-Map erzeugen, damit das Plugin sofort funktioniert
+                getLogger().info("Noch keine Map vorhanden – erzeuge die Standard-Map 'default_map' (Flachwelt mit Arena und Lobby).");
+                TestMapBuilder.build(maps);
+            }
             game.newVoteRound();
             if (maps.playableMaps().isEmpty()) {
                 getLogger().warning("Noch nicht eingerichtet: mindestens eine Map mit Spawns (/mm map create, /mm addspawn).");
@@ -169,7 +174,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
                 for (GameMap m : maps.all().values()) {
                     String problem = maps.problem(m);
                     sender.sendMessage(m.key + " (Welt " + m.world + "): " + (problem == null ? "spielbar" : "NICHT spielbar – " + problem)
-                            + ", " + m.spawns.size() + " Spawns, " + m.gold.size() + " Gold, Lobby: " + (m.lobby.isEmpty() ? "global" : "eigene"));
+                            + ", " + m.spawns.size() + " Spawns, " + m.gold.size() + " Gold, Lobby: " + (m.ownLobby() == null ? "global" : "eigene"));
                 }
             } else if (args.length >= 2 && args[0].equalsIgnoreCase("map") && args[1].equalsIgnoreCase("import")) {
                 importer.importAll(sender);
@@ -273,7 +278,7 @@ public class MurderMysteryPlugin extends JavaPlugin {
                 String status = problem == null ? ChatColor.GREEN + "spielbar" : ChatColor.RED + "NICHT spielbar: " + problem;
                 p.sendMessage(ChatColor.GRAY + " " + m.key + ChatColor.DARK_GRAY + " (" + m.displayName + ChatColor.DARK_GRAY + ", Welt " + m.world + ") "
                         + status + ChatColor.GRAY + " – " + m.spawns.size() + " Spawns, " + m.gold.size() + " Gold, Lobby: "
-                        + (m.lobby.isEmpty() ? "global" : "eigene"));
+                        + (m.ownLobby() == null ? "global" : "eigene"));
             }
             return;
         }
@@ -317,14 +322,23 @@ public class MurderMysteryPlugin extends JavaPlugin {
                 p.sendMessage(Util.PREFIX + ChatColor.RED + "Eine Map mit diesem Namen gibt es schon.");
                 return;
             }
-            World world = args.length > 3 ? maps.loadWorld(args[3]) : p.getWorld();
-            if (world == null) {
-                p.sendMessage(Util.PREFIX + ChatColor.RED + "Welt '" + args[3] + "' nicht gefunden. Der Welt-Ordner muss im Server-Ordner liegen.");
-                return;
+            GameMap created;
+            if (args.length > 3 && maps.isTemplate(args[3])) {
+                // Welt-Ordner aus arenas/
+                created = maps.create(name, args[3]);
+                maps.installTemplate(created);
+                maps.loadWorld(created.world);
+            } else {
+                World world = args.length > 3 ? maps.loadWorld(args[3]) : p.getWorld();
+                if (world == null) {
+                    p.sendMessage(Util.PREFIX + ChatColor.RED + "Welt '" + args[3] + "' nicht gefunden – weder als Ordner in arenas/ noch auf dem Server.");
+                    return;
+                }
+                created = maps.create(name, world);
             }
-            maps.create(name, world);
-            p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Map '" + name + "' in Welt '" + world.getName() + "' angelegt. "
-                    + ChatColor.GRAY + "Jetzt hingehen (/mm map tp " + name + ") und /mm addspawn sowie /mm addgold setzen.");
+            p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Map '" + created.key + "' angelegt: arenas/" + created.file.getName()
+                    + " (Welt " + created.world + "). " + ChatColor.GRAY + "Jetzt hingehen (/mm map tp " + created.key
+                    + ") und /mm addspawn sowie /mm addgold setzen.");
             game.refreshLobby();
             return;
         }
@@ -336,6 +350,35 @@ public class MurderMysteryPlugin extends JavaPlugin {
         String rest = args.length > 3 ? String.join(" ", Arrays.copyOfRange(args, 3, args.length)) : "";
         switch (action) {
             case "edit" -> MapAdminMenu.openEditor(this, p, m);
+            case "area" -> {
+                String what = args.length > 3 ? args[3].toLowerCase() : "";
+                switch (what) {
+                    case "corner1", "corner2", "pos1", "pos2" -> {
+                        if (!p.getWorld().getName().equals(m.world)) {
+                            p.sendMessage(Util.PREFIX + ChatColor.RED + "Du musst in der Welt der Map stehen (" + m.world + ").");
+                            return;
+                        }
+                        if (what.endsWith("1")) m.corner1 = Util.serialize(p.getLocation());
+                        else m.corner2 = Util.serialize(p.getLocation());
+                        m.areaEnabled = !m.corner1.isEmpty() && !m.corner2.isEmpty();
+                        maps.saveMap(m);
+                        p.sendMessage(Util.PREFIX + ChatColor.GREEN + "Ecke " + what.charAt(what.length() - 1) + " des Spielbereichs gesetzt."
+                                + (m.areaEnabled ? " Spielbereich ist aktiv." : ChatColor.GRAY + " Jetzt noch die andere Ecke setzen."));
+                    }
+                    case "on", "off" -> {
+                        m.areaEnabled = what.equals("on");
+                        maps.saveMap(m);
+                        p.sendMessage(Util.PREFIX + "Spielbereich " + (m.areaEnabled ? ChatColor.GREEN + "aktiv" : ChatColor.RED + "aus") + ".");
+                    }
+                    default -> p.sendMessage(Util.PREFIX + ChatColor.RED + "/mm map area " + m.key + " <corner1|corner2|on|off>");
+                }
+            }
+            case "reinstall" -> {
+                p.sendMessage(Util.PREFIX + "Übernehme die aktuelle Version von arenas/" + m.worldSetting + " …");
+                String error = maps.reinstall(m);
+                p.sendMessage(Util.PREFIX + (error == null ? ChatColor.GREEN + "Welt neu installiert." : ChatColor.RED + error));
+                game.refreshLobby();
+            }
             case "rename", "description", "author" -> {
                 if (action.equals("rename") && rest.isEmpty()) {
                     p.sendMessage(Util.PREFIX + ChatColor.RED + "Bitte einen Namen angeben: /mm map rename " + m.key + " <Anzeigename>");
@@ -531,9 +574,11 @@ public class MurderMysteryPlugin extends JavaPlugin {
         p.sendMessage(ChatColor.YELLOW + "/mm map list" + ChatColor.GRAY + " – alle Maps mit Status");
         p.sendMessage(ChatColor.YELLOW + "/mm map create <name> [weltordner]" + ChatColor.GRAY + " – Map anlegen (ohne Weltordner: aktuelle Welt)");
         p.sendMessage(ChatColor.YELLOW + "/mm maps" + ChatColor.GRAY + " – Menü zum Verwalten aller Maps");
-        p.sendMessage(ChatColor.YELLOW + "/mm map import" + ChatColor.GRAY + " – hochgeladene Maps aus plugins/MurderMystery/upload/ importieren");
+        p.sendMessage(ChatColor.YELLOW + "/mm map import" + ChatColor.GRAY + " – neue Welt-Ordner/ZIPs aus plugins/MurderMystery/arenas/ einrichten");
         p.sendMessage(ChatColor.YELLOW + "/mm map testmap" + ChatColor.GRAY + " – fertige Test-Map (Flachwelt mit Arena und Lobby) erzeugen");
         p.sendMessage(ChatColor.YELLOW + "/mm map rename | description | author <name> <text>" + ChatColor.GRAY + " – Anzeigename, Beschreibung, Erbauer");
+        p.sendMessage(ChatColor.YELLOW + "/mm map area <name> corner1 | corner2 | on | off" + ChatColor.GRAY + " – Spielbereich (Größe) der Map");
+        p.sendMessage(ChatColor.YELLOW + "/mm map reinstall <name>" + ChatColor.GRAY + " – geänderten Welt-Ordner aus arenas/ übernehmen");
         p.sendMessage(ChatColor.YELLOW + "/mm map tp <name>" + ChatColor.GRAY + " – zur Map teleportieren");
         p.sendMessage(ChatColor.YELLOW + "/mm map enable | disable <name>" + ChatColor.GRAY + " – Map an-/ausschalten");
         p.sendMessage(ChatColor.YELLOW + "/mm map setlobby [name]" + ChatColor.GRAY + " – eigene Wartelobby für diese Map setzen");

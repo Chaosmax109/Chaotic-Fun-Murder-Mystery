@@ -1,16 +1,14 @@
 # ===============================
-#   Murder Mystery – Maps
+#   Murder Mystery – Map-Auswahl
 # ===============================
-# Jede Map ist eine eigene Welt (oder ein Bereich in einer Welt) mit eigenen Spieler- und Gold-Spawns.
-# Maps hinzufügen:
-#   1. Den Welt-Ordner der Map in den Server-Ordner legen (neben "world").
-#   2. Im Spiel: /mm map create <name> <weltordner>   (oder ohne Weltordner = die Welt, in der du stehst)
-#   3. /mm map tp <name>, dort mit /mm addspawn und /mm addgold die Punkte setzen.
-# Die Welten werden beim Serverstart automatisch geladen – Multiverse ist nicht nötig.
-# Nach Änderungen an dieser Datei: /mm reload
+# Die Maps selbst liegen im Ordner plugins/MurderMystery/arenas/:
+#   - je Map eine .yml-Datei (Name, Welt, Lobby, Spielbereich, Spieler- und Gold-Spawns)
+#   - daneben die Welt-Ordner der Maps (oder ZIP-Dateien, die beim Import entpackt werden)
+# Hier steht nur, WIE die Map für eine Runde ausgewählt wird.
+# Nach Änderungen: /mm reload
 
 # Wie die Map für eine Runde ausgewählt wird:
-#   VOTE              – die Spieler stimmen in der Lobby ab (Item im Inventar oder /mm vote)
+#   VOTE              – die Spieler stimmen in der Lobby ab (Item in der Hotbar oder /mm vote)
 #   RANDOM_EACH_ROUND – jede Runde eine zufällige Map
 #   RANDOM_ON_START   – bei jedem Serverstart eine zufällige Map, die bis zum nächsten Neustart bleibt
 mode: VOTE
@@ -20,14 +18,6 @@ vote-options: 3
 
 # Nicht zweimal hintereinander dieselbe Map (auch über Neustarts hinweg)
 avoid-repeat: true
-
-# Die Maps. Wird per Befehl gepflegt – display-name, enabled und icon kannst du hier auch direkt ändern.
-#   display-name: Name in Abstimmung und Scoreboard
-#   world:        Name des Welt-Ordners
-#   enabled:      false = Map wird nicht gespielt
-#   icon:         Item im Abstimmungs-Menü
-#   lobby:        eigene Wartelobby der Map (per /mm map setlobby). Leer = globale Lobby aus der config.yml
-maps: {}
 
 # Wird automatisch gesetzt (zuletzt gespielte Map)
 last-map: null

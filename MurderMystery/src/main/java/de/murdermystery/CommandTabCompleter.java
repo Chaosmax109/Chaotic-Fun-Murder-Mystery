@@ -19,10 +19,10 @@ public class CommandTabCompleter implements TabCompleter {
             "spawns", "golds", "removespawn", "removegold", "tpspawn", "tpgold", "clearspawns", "cleargold",
             "start", "stop", "info", "reload");
     private static final List<String> MAP_ACTIONS = List.of("list", "gui", "create", "import", "testmap", "edit", "tp",
-            "enable", "disable", "next", "setlobby", "clearlobby", "rename", "description", "author", "delete", "help");
+            "enable", "disable", "next", "setlobby", "clearlobby", "area", "reinstall", "rename", "description", "author", "delete", "help");
     /** Map-Aktionen, die als drittes Argument einen Map-Namen erwarten. */
     private static final List<String> MAP_ACTIONS_WITH_NAME = List.of("edit", "tp", "enable", "disable", "next",
-            "setlobby", "clearlobby", "rename", "description", "author", "delete");
+            "setlobby", "clearlobby", "area", "reinstall", "rename", "description", "author", "delete");
 
     private final MurderMysteryPlugin plugin;
 
@@ -50,6 +50,7 @@ public class CommandTabCompleter implements TabCompleter {
             String action = args[1].toLowerCase();
             if (args.length == 3 && MAP_ACTIONS_WITH_NAME.contains(action)) return match(args[2], mapNames());
             if (args.length == 4 && action.equals("create")) return match(args[3], worldNames());
+            if (args.length == 4 && action.equals("area")) return match(args[3], List.of("corner1", "corner2", "on", "off"));
             return List.of();
         }
         switch (sub) {

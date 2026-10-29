@@ -3,12 +3,10 @@ package de.murdermystery;
 import de.murdermystery.MapManager.GameMap;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
-import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,9 +20,12 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Importiert hochgeladene Maps aus {@code plugins/MurderMystery/upload/}: Welt-Ordner oder ZIP-Dateien.
- * Jede Map wird als Welt {@code mm_<name>} in den Server-Ordner kopiert, geladen und als Map eingetragen.
- * Erfolgreich importierte Uploads wandern nach {@code upload/importiert/}.
+ * Nimmt neue Maps aus {@code plugins/MurderMystery/arenas/} auf:
+ * <ul>
+ *   <li>ZIP-Dateien werden in einen gleichnamigen Welt-Ordner entpackt (die ZIP wandert danach nach arenas/importiert/).</li>
+ *   <li>Für jeden Welt-Ordner, den noch keine Arena-Datei benutzt, wird {@code <name>.yml} angelegt.</li>
+ * </ul>
+ * Danach wird die Welt installiert und geladen – es fehlen nur noch die Spawns.
  */
 public class MapImporter {
 
@@ -32,179 +33,148 @@ public class MapImporter {
 
     private final MurderMysteryPlugin plugin;
     private final MapManager maps;
-    private final File uploadDir;
     private boolean running;
 
     public MapImporter(MurderMysteryPlugin plugin, MapManager maps) {
         this.plugin = plugin;
         this.maps = maps;
-        this.uploadDir = new File(plugin.getDataFolder(), "upload");
     }
 
-    /** Legt den Upload-Ordner mit einer kurzen Anleitung an. */
+    private File dir() {
+        return maps.arenasDir();
+    }
+
+    /** Legt den arenas-Ordner mit einer kurzen Anleitung an. */
     public void prepareFolder() {
-        if (!uploadDir.isDirectory() && !uploadDir.mkdirs()) return;
-        File readme = new File(uploadDir, "LIESMICH.txt");
+        if (!dir().isDirectory() && !dir().mkdirs()) return;
+        File readme = new File(dir(), "LIESMICH.txt");
         if (readme.exists()) return;
         try {
             Files.writeString(readme.toPath(), String.join(System.lineSeparator(),
-                    "Maps hochladen",
-                    "==============",
-                    "Lege hier Welt-Ordner oder ZIP-Dateien mit einer Minecraft-Welt ab (z. B. per FTP oder im Dateimanager deines Hosters).",
-                    "Der Datei- bzw. Ordnername wird zum Map-Namen, z. B. villa.zip -> Map 'villa' (Welt 'mm_villa').",
+                    "Maps (Arenen)",
+                    "=============",
+                    "Jede Map besteht aus einer .yml-Datei hier im Ordner und ihrer Welt:",
+                    "  arenas/Dam/          <- Welt-Ordner (mit level.dat) – oder Dam.zip",
+                    "  arenas/dam.yml       <- Einstellungen: Name, world: Dam, Lobby, Spielbereich, Spawns, Gold",
                     "",
-                    "Importiert wird beim nächsten Serverstart automatisch, oder sofort mit /mm map import (oder im Menü /mm maps).",
-                    "Danach im Spiel: /mm map tp <name> und dort /mm addspawn sowie /mm addgold setzen (oder im Menü /mm maps).",
-                    "Fertig importierte Uploads werden in den Unterordner 'importiert' verschoben.",
+                    "Neue Map: Welt-Ordner oder ZIP hier hochladen (FTP / Dateimanager deines Hosters).",
+                    "Beim nächsten Serverstart, mit /mm map import oder im Menü /mm maps wird die ZIP entpackt",
+                    "und automatisch eine .yml angelegt. Danach im Spiel /mm map tp <name> und /mm addspawn, /mm addgold.",
+                    "",
+                    "In der .yml kann statt eines Welt-Ordners auch eine vorhandene Server-Welt stehen (z. B. world: world).",
+                    "Ein Welt-Ordner wird beim ersten Mal als Server-Welt mm_<name> kopiert. Änderst du danach den Ordner,",
+                    "übernimmt /mm map reinstall <name> die neue Version.",
                     ""), StandardCharsets.UTF_8);
         } catch (IOException ignored) {
         }
     }
 
-    /** Alle Uploads, die noch auf den Import warten. */
+    /** ZIP-Dateien und Welt-Ordner ohne eigene Arena-Datei. */
     public List<File> pending() {
         List<File> list = new ArrayList<>();
-        File[] files = uploadDir.listFiles();
+        File[] files = dir().listFiles();
         if (files == null) return list;
         for (File f : files) {
-            if (f.isDirectory() && !f.getName().equals(DONE_DIR) && !f.getName().startsWith(".")) list.add(f);
-            else if (f.isFile() && f.getName().toLowerCase(Locale.ROOT).endsWith(".zip")) list.add(f);
+            if (f.isFile() && f.getName().toLowerCase(Locale.ROOT).endsWith(".zip")) list.add(f);
+            else if (f.isDirectory() && !f.getName().equals(DONE_DIR) && !f.getName().startsWith(".")
+                    && MapManager.templateRoot(f) != null && !referenced(f.getName())) list.add(f);
         }
         return list;
     }
 
+    private boolean referenced(String folder) {
+        for (GameMap m : maps.all().values()) {
+            if (folder.equalsIgnoreCase(m.worldSetting)) return true;
+        }
+        return false;
+    }
+
     /**
-     * Importiert alle wartenden Uploads. Das Kopieren läuft im Hintergrund, Laden der Welt und Eintragen der Map
-     * danach auf dem Server-Thread. {@code sender} bekommt die Rückmeldungen (darf null sein).
+     * Nimmt alle neuen ZIPs und Welt-Ordner auf. Entpacken läuft im Hintergrund, Anlegen und Laden danach auf dem
+     * Server-Thread. {@code sender} bekommt die Rückmeldungen (darf null sein).
      */
     public void importAll(CommandSender sender) {
-        List<File> uploads = pending();
-        if (uploads.isEmpty()) {
-            tell(sender, ChatColor.GRAY + "Keine neuen Uploads in plugins/MurderMystery/upload/ gefunden.");
+        List<File> todo = pending();
+        if (todo.isEmpty()) {
+            if (sender != null) tell(sender, ChatColor.GRAY + "Keine neuen Maps in plugins/MurderMystery/arenas/ gefunden.");
             return;
         }
         if (running) {
             tell(sender, ChatColor.RED + "Es läuft bereits ein Import.");
             return;
         }
-        // Prüfungen auf dem Server-Thread, nur das Kopieren läuft im Hintergrund
-        List<File> todo = new ArrayList<>();
-        for (File upload : uploads) {
-            String key = keyOf(upload);
-            if (maps.get(key) != null) {
-                tell(sender, ChatColor.RED + "'" + upload.getName() + "': Eine Map '" + key + "' gibt es schon – Datei umbenennen.");
-            } else if (maps.worldExists("mm_" + key) || Bukkit.getWorld("mm_" + key) != null) {
-                tell(sender, ChatColor.RED + "'" + upload.getName() + "': Eine Welt 'mm_" + key + "' gibt es schon.");
-            } else {
-                todo.add(upload);
-            }
-        }
-        if (todo.isEmpty()) return;
         running = true;
-        tell(sender, "Importiere " + todo.size() + " Upload(s) …");
-        File container = Bukkit.getWorldContainer();
+        tell(sender, "Neue Maps gefunden: " + todo.size() + " – wird eingerichtet …");
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            List<String[]> copied = new ArrayList<>(); // {Map-Name, Welt-Name}
-            for (File upload : todo) {
-                String key = keyOf(upload);
-                String worldName = "mm_" + key;
+            List<String> folders = new ArrayList<>();
+            for (File f : todo) {
+                if (f.isDirectory()) {
+                    folders.add(f.getName());
+                    continue;
+                }
+                String folder = f.getName().replaceFirst("(?i)\\.zip$", "");
+                File target = new File(dir(), folder);
                 try {
-                    copyWorld(upload, new File(container, worldName).toPath());
-                    File doneDir = new File(uploadDir, DONE_DIR);
-                    doneDir.mkdirs();
-                    Files.move(upload.toPath(), new File(doneDir, upload.getName()).toPath(), StandardCopyOption.REPLACE_EXISTING);
-                    copied.add(new String[]{key, worldName});
+                    if (target.exists()) throw new IOException("es gibt schon einen Ordner arenas/" + folder);
+                    unzipWorld(f.toPath(), target.toPath());
+                    File done = new File(dir(), DONE_DIR);
+                    done.mkdirs();
+                    Files.move(f.toPath(), new File(done, f.getName()).toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    folders.add(folder);
                 } catch (IOException e) {
-                    tellSync(sender, ChatColor.RED + "'" + upload.getName() + "' konnte nicht importiert werden: " + e.getMessage());
+                    tellSync(sender, ChatColor.RED + "'" + f.getName() + "' konnte nicht entpackt werden: " + e.getMessage());
                 }
             }
             Bukkit.getScheduler().runTask(plugin, () -> {
-                for (String[] c : copied) {
-                    World w = maps.loadWorld(c[1]);
-                    if (w == null) {
-                        tell(sender, ChatColor.RED + "Welt '" + c[1] + "' wurde kopiert, ließ sich aber nicht laden.");
-                        continue;
-                    }
-                    GameMap m = maps.create(c[0], w);
-                    tell(sender, ChatColor.GREEN + "Map '" + m.key + "' importiert (Welt " + w.getName() + "). "
-                            + ChatColor.GRAY + "Jetzt Spawns setzen: /mm map tp " + m.key + ", dann /mm addspawn und /mm addgold – oder im Menü /mm maps.");
-                }
+                for (String folder : folders) register(sender, folder);
                 running = false;
                 plugin.game().refreshLobby();
             });
         });
     }
 
-    /** Map-Name aus dem Datei-/Ordnernamen, z. B. "Villa Neu.zip" → "villa_neu". */
-    private static String keyOf(File upload) {
-        return upload.getName().replaceFirst("(?i)\\.zip$", "").toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "_");
+    /** Legt die Arena-Datei an, installiert die Welt und lädt sie. */
+    private void register(CommandSender sender, String folder) {
+        if (referenced(folder)) return;
+        String key = MapManager.keyOf(folder);
+        while (maps.get(key) != null || new File(dir(), key + ".yml").exists()) key = key + "_2";
+        GameMap m = maps.create(key, folder);
+        m.displayName = folder;
+        maps.saveMap(m);
+        maps.installTemplate(m);
+        if (maps.loadWorld(m.world) == null) {
+            tell(sender, ChatColor.RED + "Map '" + key + "' angelegt, aber die Welt aus arenas/" + folder + " ließ sich nicht laden.");
+            return;
+        }
+        tell(sender, ChatColor.GREEN + "Map '" + key + "' eingerichtet (arenas/" + key + ".yml, Welt arenas/" + folder + "). "
+                + ChatColor.GRAY + "Jetzt Spawns setzen: /mm map tp " + key + ", dann /mm addspawn und /mm addgold – oder im Menü /mm maps.");
     }
 
-    /** Kopiert eine Welt aus einem Ordner oder ZIP. Gesucht wird der Ordner mit der level.dat. */
-    private void copyWorld(File upload, Path target) throws IOException {
-        Path temp = null;
-        Path source;
-        if (upload.isFile()) {
-            temp = Files.createTempDirectory(uploadDir.toPath(), ".import_");
-            unzip(upload.toPath(), temp);
-            source = findWorldRoot(temp);
-        } else {
-            source = findWorldRoot(upload.toPath());
-        }
+    /** Entpackt eine ZIP so, dass der Ordner mit der level.dat zu {@code target} wird. */
+    private void unzipWorld(Path zip, Path target) throws IOException {
+        Path temp = Files.createTempDirectory(dir().toPath(), ".import_");
         try {
-            if (source == null) throw new IOException("keine level.dat gefunden – ist das eine Minecraft-Welt?");
-            copyTree(source, target);
-            Files.deleteIfExists(target.resolve("uid.dat"));          // sonst meldet der Server eine doppelte Welt
-            Files.deleteIfExists(target.resolve("session.lock"));
-        } finally {
-            if (temp != null) deleteTree(temp);
-        }
-    }
-
-    private static Path findWorldRoot(Path dir) throws IOException {
-        try (Stream<Path> s = Files.walk(dir, 4)) {
-            return s.filter(p -> p.getFileName().toString().equals("level.dat"))
-                    .map(Path::getParent)
-                    .min(Comparator.comparingInt(Path::getNameCount))
-                    .orElse(null);
-        }
-    }
-
-    private static void unzip(Path zip, Path into) throws IOException {
-        Path root = into.toAbsolutePath().normalize();
-        try (ZipInputStream in = new ZipInputStream(Files.newInputStream(zip))) {
-            ZipEntry e;
-            while ((e = in.getNextEntry()) != null) {
-                Path out = root.resolve(e.getName()).normalize();
-                if (!out.startsWith(root)) throw new IOException("ungültiger Pfad in der ZIP-Datei: " + e.getName());
-                if (e.isDirectory()) {
-                    Files.createDirectories(out);
-                } else {
-                    Files.createDirectories(out.getParent());
-                    copy(in, out);
+            Path root = temp.toAbsolutePath().normalize();
+            try (ZipInputStream in = new ZipInputStream(Files.newInputStream(zip))) {
+                ZipEntry e;
+                while ((e = in.getNextEntry()) != null) {
+                    Path out = root.resolve(e.getName()).normalize();
+                    if (!out.startsWith(root)) throw new IOException("ungültiger Pfad in der ZIP-Datei: " + e.getName());
+                    if (e.isDirectory()) {
+                        Files.createDirectories(out);
+                    } else {
+                        Files.createDirectories(out.getParent());
+                        Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
+                    }
                 }
             }
-        }
-    }
-
-    private static void copy(InputStream in, Path out) throws IOException {
-        Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
-    }
-
-    private static void copyTree(Path from, Path to) throws IOException {
-        try (Stream<Path> s = Files.walk(from)) {
-            for (Path p : (Iterable<Path>) s::iterator) {
-                Path dest = to.resolve(from.relativize(p).toString());
-                if (Files.isDirectory(p)) Files.createDirectories(dest);
-                else Files.copy(p, dest, StandardCopyOption.REPLACE_EXISTING);
+            Path world = MapManager.templateRoot(temp.toFile());
+            if (world == null) throw new IOException("keine level.dat gefunden – ist das eine Minecraft-Welt?");
+            MapManager.copyTree(world, target);
+        } finally {
+            try (Stream<Path> s = Files.walk(temp)) {
+                s.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
             }
-        }
-    }
-
-    private static void deleteTree(Path dir) {
-        try (Stream<Path> s = Files.walk(dir)) {
-            s.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
-        } catch (IOException ignored) {
         }
     }
 

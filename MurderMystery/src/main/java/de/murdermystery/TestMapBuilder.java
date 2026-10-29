@@ -16,8 +16,8 @@ import org.bukkit.WorldType;
  */
 public final class TestMapBuilder {
 
-    public static final String WORLD = "mm_testmap";
-    public static final String KEY = "testmap";
+    public static final String WORLD = "mm_default_map";
+    public static final String KEY = "default_map";
 
     private static final int ARENA_RADIUS = 20;   // Arena: 41 x 41 Blöcke um (0, 0)
     private static final int WALL_HEIGHT = 4;
@@ -48,19 +48,22 @@ public final class TestMapBuilder {
         if (m == null) {
             m = maps.create(KEY, w);
         }
-        m.displayName = Util.color("&aTest-Map");
+        m.displayName = Util.color("&aStandard-Map");
+        m.description = "Flache Test-Arena mit vier Räumen";
         m.icon = Material.GRASS_BLOCK;
         m.enabled = true;
         m.spawns.clear();
         m.gold.clear();
 
-        // 16 Spieler-Spawns im Kreis, Blick zur Mitte
+        // 16 Spieler-Spawns im Kreis (auf Blockmitten), Blick zur Mitte
         for (int i = 0; i < 16; i++) {
             double angle = 2 * Math.PI * i / 16;
-            double x = Math.cos(angle) * 14 + 0.5;
-            double z = Math.sin(angle) * 14 + 0.5;
+            double x = Math.floor(Math.cos(angle) * 14) + 0.5;
+            double z = Math.floor(Math.sin(angle) * 14) + 0.5;
             Location l = new Location(w, x, y, z);
             l.setDirection(new Location(w, 0.5, y, 0.5).toVector().subtract(l.toVector()));
+            l.setYaw(Math.round(l.getYaw()));
+            l.setPitch(0);
             m.spawns.add(Util.serialize(l));
         }
         // 12 Gold-Spawns verteilt über die Arena
@@ -70,9 +73,15 @@ public final class TestMapBuilder {
             m.gold.add(Util.serialize(new Location(w, g[0] + 0.5, y, g[1] + 0.5)));
         }
 
+        // Eigene Lobby (Glas-Box) mit kleinem Lobby-Bereich, Spielbereich = Arena
         Location lobby = new Location(w, LOBBY_X + 0.5, y, 0.5, 90f, 0f);
         m.lobby = Util.serialize(lobby);
-        maps.save();
+        m.lobbyMode = MapManager.LobbyMode.OWN;
+        m.lobbyRadius = LOBBY_RADIUS + 2;
+        m.corner1 = Util.serialize(new Location(w, -ARENA_RADIUS, y - 2, -ARENA_RADIUS));
+        m.corner2 = Util.serialize(new Location(w, ARENA_RADIUS, y + 20, ARENA_RADIUS));
+        m.areaEnabled = true;
+        maps.saveMap(m);
         if (maps.getLobby() == null) {
             maps.setLobby(lobby);
         }

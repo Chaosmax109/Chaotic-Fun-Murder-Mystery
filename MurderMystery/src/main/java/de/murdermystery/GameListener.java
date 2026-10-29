@@ -148,6 +148,7 @@ public class GameListener implements Listener {
             return;
         }
         game.checkLobbyBounds(p);
+        game.checkArenaBounds(p);
     }
 
     @EventHandler

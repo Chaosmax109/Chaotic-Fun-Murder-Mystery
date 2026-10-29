@@ -236,7 +236,7 @@ public class Game {
 
     /** Hält wartende Spieler in der Nähe der Lobby, falls diese in derselben Welt wie die Map liegt. */
     public void checkLobbyBounds(Player p) {
-        int max = s().lobbyMaxDistance;
+        int max = maps.currentLobbyRadius();
         if (max <= 0 || (state != State.WAITING && state != State.STARTING)) return;
         if (!players.contains(p.getUniqueId()) || p.getGameMode() == GameMode.CREATIVE) return;
         Location lobby = maps.currentLobby();
@@ -244,6 +244,15 @@ public class Game {
         if (!p.getWorld().equals(lobby.getWorld()) || p.getLocation().distanceSquared(lobby) > (double) max * max) {
             p.teleport(lobby);
             p.sendMessage(Util.PREFIX + "Bleib in der Lobby, bis die Runde startet!");
+        }
+    }
+
+    /** Hält lebende Spieler während der Runde im Spielbereich der Map (area: in der Arena-Datei). */
+    public void checkArenaBounds(Player p) {
+        if (state != State.INGAME || map == null || !alive.contains(p.getUniqueId())) return;
+        if (!map.inArea(p.getLocation())) {
+            p.teleport(respawnPoint());
+            p.sendMessage(Util.PREFIX + ChatColor.RED + "Du hast den Spielbereich verlassen!");
         }
     }
 
@@ -318,28 +327,58 @@ public class Game {
         return it.getItemMeta().getPersistentDataContainer().get(lobbyItemKey, PersistentDataType.STRING);
     }
 
-    /** Verteilt die Items der Wartelobby (Plätze in der config.yml unter lobby-items, -1 = aus). */
+    /**
+     * Sorgt dafür, dass wartende Spieler ihre Lobby-Items haben (Plätze in der config.yml unter lobby-items, 0 = aus).
+     * Wird jede Sekunde aufgerufen: Hat ein anderes Plugin (z. B. Freunde/Party) ein Item ersetzt oder das Inventar
+     * geleert, kommt es zurück – auf seinen Platz oder, wenn der belegt ist, auf den nächsten freien Hotbar-Platz.
+     */
     private void giveLobbyItems(Player p) {
         if (votingOpen()) {
-            setLobbyItem(p, s().voteItemSlot, "vote", item(Material.PAPER, ChatColor.YELLOW + "Map-Abstimmung " + ChatColor.GRAY + "(Rechtsklick)"));
+            ensureLobbyItem(p, s().voteItemSlot, "vote", () -> item(Material.PAPER, ChatColor.YELLOW + "Map-Abstimmung " + ChatColor.GRAY + "(Rechtsklick)"));
+        } else {
+            removeLobbyItem(p, "vote");
         }
-        if (plugin.stats().isEnabled()) {
+        ensureLobbyItem(p, s().statsItemSlot, "stats", () -> {
             ItemStack head = item(Material.PLAYER_HEAD, ChatColor.GREEN + "Deine Stats " + ChatColor.GRAY + "(Rechtsklick)");
             if (head.getItemMeta() instanceof org.bukkit.inventory.meta.SkullMeta skull) {
                 skull.setOwningPlayer(p);
                 head.setItemMeta(skull);
             }
-            setLobbyItem(p, s().statsItemSlot, "stats", head);
-        }
-        setLobbyItem(p, s().mapInfoItemSlot, "mapinfo", item(Material.FILLED_MAP, ChatColor.AQUA + "Map-Info " + ChatColor.GRAY + "(Rechtsklick)"));
+            return head;
+        });
+        ensureLobbyItem(p, s().mapInfoItemSlot, "mapinfo", () -> item(Material.FILLED_MAP, ChatColor.AQUA + "Map-Info " + ChatColor.GRAY + "(Rechtsklick)"));
     }
 
-    private void setLobbyItem(Player p, int slot, String type, ItemStack it) {
+    private void ensureLobbyItem(Player p, int slot, String type, java.util.function.Supplier<ItemStack> factory) {
         if (slot < 0 || slot > 8) return;
+        PlayerInventory inv = p.getInventory();
+        for (ItemStack it : inv.getContents()) {
+            if (type.equals(lobbyItemType(it))) return; // schon vorhanden
+        }
+        int target = slot;
+        if (inv.getItem(target) != null && !inv.getItem(target).getType().isAir()) {
+            target = -1;
+            for (int i = 0; i <= 8; i++) {
+                ItemStack cur = inv.getItem(i);
+                if (cur == null || cur.getType().isAir()) {
+                    target = i;
+                    break;
+                }
+            }
+            if (target < 0) return; // Hotbar voll
+        }
+        ItemStack it = factory.get();
         ItemMeta meta = it.getItemMeta();
         meta.getPersistentDataContainer().set(lobbyItemKey, PersistentDataType.STRING, type);
         it.setItemMeta(meta);
-        p.getInventory().setItem(slot, it);
+        inv.setItem(target, it);
+    }
+
+    private void removeLobbyItem(Player p, String type) {
+        PlayerInventory inv = p.getInventory();
+        for (int i = 0; i < inv.getSize(); i++) {
+            if (type.equals(lobbyItemType(inv.getItem(i)))) inv.setItem(i, null);
+        }
     }
 
     private void clearLobbyItems(Player p) {
@@ -404,6 +443,9 @@ public class Game {
                     reset();
                 }
             }
+        }
+        if (state == State.WAITING || state == State.STARTING) {
+            for (Player p : online(players)) giveLobbyItems(p);
         }
         updateBoards();
     }

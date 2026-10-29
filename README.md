@@ -15,7 +15,7 @@ Ein Spieler ist der **Mörder**, einer der **Detektiv**, alle anderen sind **uns
 - Tote werden Zuschauer mit eigenem Chat
 - Automatische Lobby mit Countdown, die nächste Runde startet von selbst
 - **Mehrere Maps** mit allgemeiner Wartelobby: Map-Abstimmung in der Lobby, zufällige Map pro Runde oder pro Serverstart. Map-Welten werden automatisch geladen.
-- **Maps hochladen** (Ordner oder ZIP nach `plugins/MurderMystery/upload/`) und im **Map-Menü** `/mm maps` einrichten; fertige Test-Map per `/mm map testmap`
+- **Maps im Ordner `arenas/`**: Welt-Ordner oder ZIP hochladen, je Map eine `.yml` mit Welt, Lobby (global/eigene), Spielbereich, Spieler- und Gold-Spawns; Map-Menü `/mm maps`; Standard-Map wird beim ersten Start erzeugt
 - Lobby-Hotbar mit Map-Info, Map-Abstimmung und Stats; Tab-Vervollständigung für alle Befehle
 - Eigener Spawnpunkt für jeden Spieler beim Rundenstart, Spawns per Befehl verwalten
 - Rollen in eigener `roles.yml`: eigene Rollen hinzufügen (Team, Waffe, Effekte), Anzahl, Texte, Abklingzeiten
@@ -39,7 +39,7 @@ Die fertigen Plugin-Dateien gibt es unter [Releases](../../releases):
 
 Server aufsetzen, Arena einrichten und alle Befehle: siehe [ANLEITUNG.md](ANLEITUNG.md).
 
-Kurz: `/mm setlobby`, `/mm map create <name>`, dann auf der Map mehrmals `/mm addspawn` und `/mm addgold` – fertig. Zum schnellen Ausprobieren: `/mm map testmap` erzeugt eine fertige Test-Map.
+Kurz: `/mm setlobby`, `/mm map create <name>`, dann auf der Map mehrmals `/mm addspawn` und `/mm addgold` – fertig. Beim ersten Start wird automatisch eine spielbare Standard-Map erzeugt.
 
 ## Selbst bauen
 

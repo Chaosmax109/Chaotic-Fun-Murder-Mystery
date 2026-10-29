@@ -31,7 +31,8 @@ public class MapAdminMenu implements InventoryHolder {
     private static final int OV_TESTMAP = 45, OV_IMPORT = 47, OV_MODE = 49, OV_LOBBY = 51, OV_CLOSE = 53;
     // Bearbeiten
     private static final int ED_NAME = 4, ED_TP = 10, ED_SPAWN = 11, ED_GOLD = 12, ED_STATUS = 13, ED_LOBBY = 14,
-            ED_ICON = 15, ED_ENABLED = 16, ED_CLEAR_SPAWNS = 19, ED_CLEAR_GOLD = 20, ED_NEXT = 22, ED_DELETE = 24, ED_BACK = 26;
+            ED_ICON = 15, ED_ENABLED = 16, ED_CLEAR_SPAWNS = 19, ED_CLEAR_GOLD = 20, ED_AREA = 21, ED_NEXT = 22,
+            ED_LOBBY_RADIUS = 23, ED_DELETE = 24, ED_BACK = 26;
 
     private final MurderMysteryPlugin plugin;
     private final MapManager maps;
@@ -83,7 +84,7 @@ public class MapAdminMenu implements InventoryHolder {
             lore.add(problem == null ? ChatColor.GREEN + "✔ spielbar" : ChatColor.RED + "✘ " + problem);
             lore.add(ChatColor.GRAY + "Welt: " + ChatColor.WHITE + m.world);
             lore.add(ChatColor.GRAY + "Spieler-Spawns: " + ChatColor.WHITE + m.spawns.size() + ChatColor.GRAY + "  Gold: " + ChatColor.WHITE + m.gold.size());
-            lore.add(ChatColor.GRAY + "Lobby: " + ChatColor.WHITE + (m.lobby.isEmpty() ? "global" : "eigene"));
+            lore.add(ChatColor.GRAY + "Lobby: " + ChatColor.WHITE + (m.ownLobby() == null ? "global" : "eigene"));
             lore.add("");
             lore.add(ChatColor.YELLOW + "Klicken zum Bearbeiten");
             inventory.setItem(slot, item(m.icon, ChatColor.YELLOW + m.displayName + ChatColor.DARK_GRAY + " (" + m.key + ")", lore, problem == null));
@@ -93,8 +94,8 @@ public class MapAdminMenu implements InventoryHolder {
         int uploads = plugin.importer().pending().size();
         inventory.setItem(OV_TESTMAP, item(Material.GRASS_BLOCK, ChatColor.GREEN + "Test-Map erzeugen",
                 List.of(ChatColor.GRAY + "Flachwelt mit Arena, Spawns und Lobby", ChatColor.GRAY + "(baut sie neu, falls es sie schon gibt)"), false));
-        inventory.setItem(OV_IMPORT, item(Material.CHEST, ChatColor.GOLD + "Hochgeladene Maps importieren",
-                List.of(ChatColor.GRAY + "Ordner: plugins/MurderMystery/upload/", ChatColor.GRAY + "Wartende Uploads: " + ChatColor.WHITE + uploads,
+        inventory.setItem(OV_IMPORT, item(Material.CHEST, ChatColor.GOLD + "Neue Maps aus arenas/ einrichten",
+                List.of(ChatColor.GRAY + "Ordner: plugins/MurderMystery/arenas/", ChatColor.GRAY + "Neue Welt-Ordner/ZIPs: " + ChatColor.WHITE + uploads,
                         ChatColor.GRAY + "Welt-Ordner oder ZIP-Dateien hineinlegen"), uploads > 0));
         inventory.setItem(OV_MODE, item(Material.COMPARATOR, ChatColor.AQUA + "Auswahl-Modus: " + ChatColor.WHITE + modeName(maps.mode()),
                 List.of(ChatColor.GRAY + "Klicken zum Wechseln:", ChatColor.GRAY + "Abstimmung → Zufall pro Runde → Zufall pro Serverstart"), false));
@@ -123,7 +124,7 @@ public class MapAdminMenu implements InventoryHolder {
         inventory.setItem(ED_STATUS, item(m.icon, problem == null ? ChatColor.GREEN + "✔ spielbar" : ChatColor.RED + "✘ nicht spielbar",
                 problem == null ? List.of(ChatColor.GRAY + "Welt: " + m.world) : List.of(ChatColor.GRAY + problem, ChatColor.GRAY + "Welt: " + m.world), problem == null));
         inventory.setItem(ED_LOBBY, item(Material.BEACON, ChatColor.LIGHT_PURPLE + "Eigene Lobby hier setzen",
-                List.of(ChatColor.GRAY + "Aktuell: " + ChatColor.WHITE + (m.lobby.isEmpty() ? "globale Lobby" : "eigene Lobby"),
+                List.of(ChatColor.GRAY + "Aktuell: " + ChatColor.WHITE + (m.ownLobby() == null ? "globale Lobby (GLOBAL)" : "eigene Lobby (OWN)"),
                         ChatColor.GRAY + "Rechtsklick: eigene Lobby entfernen"), false));
         ItemStack hand = p.getInventory().getItemInMainHand();
         inventory.setItem(ED_ICON, item(Material.ITEM_FRAME, ChatColor.YELLOW + "Icon = Item in deiner Hand",
@@ -135,6 +136,15 @@ public class MapAdminMenu implements InventoryHolder {
                 List.of(ChatColor.GRAY + "Shift-Klick zum Bestätigen"), false));
         inventory.setItem(ED_CLEAR_GOLD, item(Material.TNT, ChatColor.RED + "Alle Gold-Spawns löschen",
                 List.of(ChatColor.GRAY + "Shift-Klick zum Bestätigen"), false));
+        inventory.setItem(ED_AREA, item(Material.STRUCTURE_VOID, ChatColor.YELLOW + "Spielbereich (Größe der Map)",
+                List.of(ChatColor.GRAY + "Status: " + (m.areaEnabled ? ChatColor.GREEN + "aktiv" : ChatColor.RED + "aus"),
+                        ChatColor.GRAY + "Ecke 1: " + ChatColor.WHITE + (m.corner1.isEmpty() ? "–" : MapManager.toConfig(m.world, m.corner1, false)),
+                        ChatColor.GRAY + "Ecke 2: " + ChatColor.WHITE + (m.corner2.isEmpty() ? "–" : MapManager.toConfig(m.world, m.corner2, false)),
+                        "", ChatColor.GRAY + "Linksklick: Ecke 1 hier", ChatColor.GRAY + "Rechtsklick: Ecke 2 hier",
+                        ChatColor.GRAY + "Shift-Klick: an/aus"), m.areaEnabled));
+        inventory.setItem(ED_LOBBY_RADIUS, item(Material.LEAD, ChatColor.LIGHT_PURPLE + "Lobby-Bereich: " + ChatColor.WHITE + m.lobbyRadius + " Blöcke",
+                List.of(ChatColor.GRAY + "Wie weit sich Wartende von der eigenen Lobby", ChatColor.GRAY + "entfernen dürfen (0 = beliebig)",
+                        "", ChatColor.GRAY + "Linksklick: +1, Rechtsklick: −1", ChatColor.GRAY + "Shift: ±5"), false));
         inventory.setItem(ED_NEXT, item(Material.CLOCK, ChatColor.AQUA + "Als nächste Map spielen",
                 List.of(ChatColor.GRAY + "Die nächste Runde läuft auf dieser Map"), maps.forcedNext() == m));
         inventory.setItem(ED_DELETE, item(Material.LAVA_BUCKET, ChatColor.DARK_RED + "Map löschen",
@@ -240,6 +250,25 @@ public class MapAdminMenu implements InventoryHolder {
                 maps.clear(slot == ED_CLEAR_SPAWNS ? m.spawns : m.gold);
                 p.sendMessage(Util.PREFIX + (slot == ED_CLEAR_SPAWNS ? "Alle Spieler-Spawns" : "Alle Gold-Spawns") + " gelöscht.");
                 plugin.game().refreshLobby();
+            }
+            case ED_AREA -> {
+                if (click.isShiftClick()) {
+                    m.areaEnabled = !m.areaEnabled;
+                } else {
+                    if (!p.getWorld().getName().equals(m.world)) {
+                        p.sendMessage(Util.PREFIX + ChatColor.RED + "Du musst in der Welt der Map stehen (" + m.world + ").");
+                        return;
+                    }
+                    if (click.isRightClick()) m.corner2 = Util.serialize(p.getLocation());
+                    else m.corner1 = Util.serialize(p.getLocation());
+                    m.areaEnabled = !m.corner1.isEmpty() && !m.corner2.isEmpty();
+                }
+                maps.saveMap(m);
+            }
+            case ED_LOBBY_RADIUS -> {
+                int step = click.isShiftClick() ? 5 : 1;
+                m.lobbyRadius = Math.max(0, m.lobbyRadius + (click.isRightClick() ? -step : step));
+                maps.saveMap(m);
             }
             case ED_NEXT -> {
                 if (maps.problem(m) != null) {
